@@ -44,20 +44,36 @@ export class AgentService {
     decision: Decision;
     walletAddress: Address;
   }) {
-    const requestId = generateRequestId(uuid);
+    try {
+      const requestId = generateRequestId(uuid);
 
-    const actionId = this.getActionId(decision.action);
+      const actionId = this.getActionId(decision.action);
 
-    const contract = this.contractService.agentContract(walletAddress);
+      const contract = this.contractService.agentContract(walletAddress);
 
-    // const tx = await contract.submitDecision(
-    //   requestId,
-    //   actionId,
-    //   decision.token,
-    //   decision.amount,
-    // );
+      console.log(`[submitDecision] Submitting transaction with params:`, {
+        requestId,
+        actionId,
+        token: decision.token,
+        amount: decision.amount.toString(),
+      });
 
-    // await tx.wait();
+      const tx = await contract.submitDecision(
+        requestId,
+        actionId,
+        decision.token,
+        decision.amount,
+      );
+
+      console.log(`[submitDecision] Transaction submitted. Hash: ${tx.hash}`);
+      console.log(`[submitDecision] Waiting for transaction confirmation...`);
+
+      await tx.wait();
+
+      console.log(`[submitDecision] Transaction confirmed!`);
+    } catch (error: any) {
+      console.error('Error submitting to contract :', error);
+    }
   }
 
   private handleAnalysisError(error: unknown): void {
