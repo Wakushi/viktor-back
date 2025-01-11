@@ -66,7 +66,6 @@ export class AgentService {
       );
 
       console.log(`[submitDecision] Transaction submitted. Hash: ${tx.hash}`);
-      console.log(`[submitDecision] Waiting for transaction confirmation...`);
 
       await tx.wait();
 
