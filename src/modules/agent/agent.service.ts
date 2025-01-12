@@ -3,7 +3,7 @@ import { Address, parseEther } from 'viem';
 import { ethers } from 'ethers';
 import { Decision } from './entities/decision.entity';
 import { generateRequestId } from 'src/shared/utils/helpers';
-import { ContractService } from '../../shared/services/contract.service';
+import { ContractService } from '../contract/contract.service';
 
 @Injectable()
 export class AgentService {

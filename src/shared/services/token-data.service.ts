@@ -1,7 +1,6 @@
 import { Injectable } from '@nestjs/common';
-import { ConfigService } from '@nestjs/config';
-import { Alchemy, Network, TokenMetadataResponse } from 'alchemy-sdk';
-import { EnvConfig } from 'config/env.validation';
+import { TokenMetadataResponse } from 'alchemy-sdk';
+import { AlchemyService } from 'src/modules/alchemy/alchemy.service';
 import { Address } from 'viem';
 
 type Token = {
@@ -12,26 +11,13 @@ type Token = {
 
 @Injectable()
 export class TokenDataService {
-  private _alchemyClient: Alchemy;
-
-  constructor(private readonly config: ConfigService<EnvConfig, true>) {}
-
-  private get alchemyClient() {
-    if (!this._alchemyClient) {
-      const config = {
-        apiKey: this.config.get('ALCHEMY_API_KEY'),
-        network: Network.BASE_SEPOLIA,
-      };
-
-      this._alchemyClient = new Alchemy(config);
-    }
-
-    return this._alchemyClient;
-  }
+  constructor(private readonly alchemyService: AlchemyService) {}
 
   public async getWalletTokens(wallet: Address): Promise<Token[]> {
+    const client = this.alchemyService.client;
+
     try {
-      const balances = await this.alchemyClient.core.getTokenBalances(wallet);
+      const balances = await client.core.getTokenBalances(wallet);
 
       const nonZeroBalances = balances.tokenBalances.filter((token) => {
         return token.tokenBalance !== '0';
@@ -40,8 +26,6 @@ export class TokenDataService {
       const tokens: Token[] = [];
 
       for (let token of nonZeroBalances) {
-        let balance = token.tokenBalance;
-
         const metadata = await this.getTokenMetadata(
           token.contractAddress as Address,
         );
@@ -49,7 +33,9 @@ export class TokenDataService {
         tokens.push({
           name: metadata.name,
           symbol: metadata.symbol,
-          balance: (+balance / Math.pow(10, metadata.decimals)).toString(),
+          balance: (
+            +token.tokenBalance / Math.pow(10, metadata.decimals)
+          ).toString(),
         });
       }
 
@@ -64,7 +50,7 @@ export class TokenDataService {
     tokenAddress: Address,
   ): Promise<TokenMetadataResponse> {
     const metadata =
-      await this.alchemyClient.core.getTokenMetadata(tokenAddress);
+      await this.alchemyService.client.core.getTokenMetadata(tokenAddress);
 
     return metadata;
   }
