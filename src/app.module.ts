@@ -7,6 +7,8 @@ import { ContractModule } from './modules/contract/contract.module';
 import { AlchemyModule } from './modules/alchemy/alchemy.module';
 import { Network } from 'alchemy-sdk';
 import { SupabaseModule } from './modules/supabase/supabase.module';
+import { EmbeddingModule } from './modules/embedding/embedding.module';
+import { MarketTestModule } from './modules/market-test/market-test.module';
 
 @Module({
   imports: [
@@ -26,7 +28,12 @@ import { SupabaseModule } from './modules/supabase/supabase.module';
       privateKey: process.env.SUPABASE_API_KEY,
       url: process.env.SUPABASE_URL,
     }),
+    EmbeddingModule.forRoot({
+      apiKey: process.env.VOYAGE_API_KEY,
+      baseUrl: process.env.VOYAGE_API_URL,
+    }),
     AgentModule,
+    MarketTestModule,
   ],
 })
 export class AppModule {

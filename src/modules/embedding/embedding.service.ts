@@ -5,7 +5,9 @@ import {
   VoyageEmbeddingData,
   VoyageEmbeddingResponse,
 } from 'src/modules/embedding/entities/voyage.type';
-import { SupabaseService } from '../supabase/supabase.service';
+import { SupabaseError, SupabaseService } from '../supabase/supabase.service';
+import { DocumentEmbedding } from './entities/embedding.type';
+import { MatchResult } from '../supabase/entities/collections.type';
 
 @Injectable()
 export class EmbeddingService {
@@ -22,8 +24,25 @@ export class EmbeddingService {
     };
   }
 
+  public async createSaveEmbeddings(documents: any[]): Promise<void> {
+    try {
+      const embeddings = await this.createEmbeddings(documents);
+
+      const documentEmbeddings: DocumentEmbedding[] = embeddings.map(
+        ({ index, embedding }) => ({
+          content: documents[index],
+          embedding,
+        }),
+      );
+
+      await this.supabaseService.saveDocumentsEmbeddings(documentEmbeddings);
+    } catch (error: any) {
+      console.error(error);
+    }
+  }
+
   public async createEmbeddings(
-    documents: string[],
+    documents: any[],
   ): Promise<VoyageEmbeddingData[]> {
     try {
       this.verifyEmbeddingPayload(documents);
@@ -65,61 +84,49 @@ export class EmbeddingService {
     }
   }
 
-  // public async findNearestMatch(query: string): Promise<any> {
-  //   try {
-  //     if (!query || typeof query !== 'string') {
-  //       throw new ValidationError('Query must be a non-empty string');
-  //     }
+  public async findNearestMatch({
+    query,
+    matchThreshold,
+    matchCount,
+  }: {
+    query: any;
+    matchThreshold: number;
+    matchCount: number;
+  }): Promise<MatchResult[]> {
+    try {
+      this.verifyQuery(query);
 
-  //     if (query.trim().length === 0) {
-  //       throw new ValidationError('Query cannot be empty or only whitespace');
-  //     }
+      const embeddings = await this.createEmbeddings([query]);
 
-  //     const embeddings = await this.createEmbeddings([query]);
+      if (!embeddings || embeddings.length === 0) {
+        throw new ValidationError('No embeddings generated for query');
+      }
 
-  //     if (!embeddings || embeddings.length === 0) {
-  //       throw new ValidationError('No embeddings generated for query');
-  //     }
+      const matchingDocuments = await this.supabaseService.matchDocuments({
+        queryEmbedding: embeddings[0].embedding,
+        matchThreshold,
+        matchCount,
+      });
 
-  //     const { data, error } = await supabase().rpc('match_documents', {
-  //       query_embedding: embeddings[0].embedding,
-  //       match_threshold: 0.5,
-  //       match_count: 1,
-  //     });
+      return matchingDocuments;
+    } catch (error) {
+      console.error('Error in findNearestMatch:', error);
 
-  //     if (error) {
-  //       throw new SupabaseError('Failed to match documents', error);
-  //     }
+      if (
+        error instanceof ValidationError ||
+        error instanceof VoyageAPIError ||
+        error instanceof SupabaseError
+      ) {
+        throw error;
+      }
 
-  //     if (!data || !Array.isArray(data)) {
-  //       throw new ValidationError('Invalid response from match_documents');
-  //     }
-
-  //     if (data.length === 0) {
-  //       return null;
-  //     }
-
-  //     return data[0] as CosineResult;
-  //   } catch (error) {
-  //     console.error('Error in findNearestMatch:', error);
-
-  //     if (
-  //       error instanceof ValidationError ||
-  //       error instanceof VoyageAPIError ||
-  //       error instanceof SupabaseError
-  //     ) {
-  //       throw error;
-  //     }
-
-  //     throw new Error(
-  //       `Unexpected error in findNearestMatch: ${
-  //         error instanceof Error ? error.message : 'Unknown error'
-  //       }`,
-  //     );
-  //   }
-  // }
-
-  public async saveEmbeddings(): Promise<void> {}
+      throw new Error(
+        `Unexpected error in findNearestMatch: ${
+          error instanceof Error ? error.message : 'Unknown error'
+        }`,
+      );
+    }
+  }
 
   private verifyEmbeddingPayload(documents: string[]) {
     if (!Array.isArray(documents)) {
@@ -161,6 +168,16 @@ export class EmbeddingService {
       }`,
     );
   }
+
+  private verifyQuery(query: string): void {
+    if (!query || typeof query !== 'string') {
+      throw new ValidationError('Query must be a non-empty string');
+    }
+
+    if (query.trim().length === 0) {
+      throw new ValidationError('Query cannot be empty or only whitespace');
+    }
+  }
 }
 
 export class VoyageAPIError extends Error {
@@ -170,16 +187,6 @@ export class VoyageAPIError extends Error {
   ) {
     super(message);
     this.name = 'VoyageAPIError';
-  }
-}
-
-export class SupabaseError extends Error {
-  constructor(
-    message: string,
-    public readonly errorData?: any,
-  ) {
-    super(message);
-    this.name = 'SupabaseError';
   }
 }
 
