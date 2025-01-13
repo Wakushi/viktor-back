@@ -4,30 +4,37 @@ import { ethers } from 'ethers';
 import { Decision } from './entities/decision.entity';
 import { generateRequestId } from 'src/shared/utils/helpers';
 import { ContractService } from '../contract/contract.service';
+import { TokenDataService } from 'src/shared/services/token-data/token-data.service';
 
 @Injectable()
 export class AgentService {
-  constructor(private readonly contractService: ContractService) {}
+  constructor(
+    private readonly contractService: ContractService,
+    private readonly tokenDataService: TokenDataService,
+  ) {}
 
-  async makeDecision(uuid: string, owner: Address, walletAddress: Address) {
+  public async analyzeAndMakeDecision(
+    walletAddress: Address,
+  ): Promise<Decision | null> {
     try {
-      console.log(
-        `Initiating analysis for UUID ${uuid} (Wallet: ${walletAddress} | Owner: ${owner}).`,
-      );
-
-      const decision = await this.analyzeAndMakeDecision();
-
-      await this.submitDecision({
-        uuid,
-        decision,
-        walletAddress,
-      });
+      return await this.analyseMarket(walletAddress);
     } catch (error) {
       this.handleAnalysisError(error);
+      return null;
     }
   }
 
-  private async analyzeAndMakeDecision(): Promise<Decision> {
+  private async analyseMarket(walletAddress: Address): Promise<Decision> {
+    const walletTokens =
+      await this.tokenDataService.getWalletBalances(walletAddress);
+
+    // Perform token discovery
+    const discoveredTokens = await this.tokenDataService.discoverTokens();
+
+    // Filter token based on requirements
+
+    // Generate market observation for each token
+
     return {
       action: 'BUY',
       token: ethers.getAddress('0x33A3303eE744f2Fd85994CAe5E625050b32db453'),
@@ -77,8 +84,6 @@ export class AgentService {
 
   private handleAnalysisError(error: unknown): void {
     console.error('Error in handleAnalysis:', error);
-    // Here you might want to implement retry logic
-    // or store failed attempts for manual review
   }
 
   private getActionId(action: string): number {

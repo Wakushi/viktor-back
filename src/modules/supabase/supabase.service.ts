@@ -6,6 +6,7 @@ import {
   MatchResult,
   QueryFunctions,
 } from './entities/collections.type';
+import { CoinGeckoTokenMetadata } from 'src/shared/services/token-data/entities/coin-gecko.type';
 
 @Injectable()
 export class SupabaseService {
@@ -23,7 +24,7 @@ export class SupabaseService {
     this._client = createClient(url, privateKey);
   }
 
-  public get client(): SupabaseClient<any, 'public', any> {
+  private get client(): SupabaseClient<any, 'public', any> {
     return this._client;
   }
 
@@ -82,6 +83,35 @@ export class SupabaseService {
         'Error clearing embeddings table: ' + error.message,
       );
     }
+  }
+
+  async getTokenMetadataById(
+    id: string,
+  ): Promise<CoinGeckoTokenMetadata | null> {
+    try {
+      const { data, error } = await this.client
+        .from('token_metadata')
+        .select('*')
+        .eq('id', id)
+        .maybeSingle();
+
+      if (error) throw error;
+
+      return data;
+    } catch (error) {
+      console.error('Error fetching token metadata:', error);
+      return null;
+    }
+  }
+
+  async insertTokenMetadata(metadata: CoinGeckoTokenMetadata): Promise<void> {
+    const { error } = await this.client.from('token_metadata').upsert(metadata);
+
+    if (error) {
+      throw error;
+    }
+
+    console.log(`Inserted ${metadata.id} metadata row`);
   }
 }
 

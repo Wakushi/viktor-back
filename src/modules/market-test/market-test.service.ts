@@ -66,7 +66,6 @@ export class MarketTestService {
     test: PhaseTransitionTest | SignalCorrelationTest,
   ): Promise<void> {
     const baseText = transformToEmbeddingText(test.baseCase, test.marketStats);
-    console.log('[BASE CASE] : ', baseText);
     await this.embeddingService.createSaveEmbeddings([baseText]);
   }
 
@@ -123,8 +122,6 @@ export class MarketTestService {
         variation,
         test.marketStats,
       );
-
-      console.log('[VARIATION]: ', variationText);
 
       const matches = await this.embeddingService.findNearestMatch({
         query: variationText,

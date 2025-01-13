@@ -9,6 +9,7 @@ import { Network } from 'alchemy-sdk';
 import { SupabaseModule } from './modules/supabase/supabase.module';
 import { EmbeddingModule } from './modules/embedding/embedding.module';
 import { MarketTestModule } from './modules/market-test/market-test.module';
+import { UniswapV3Module } from './modules/uniswap-v3/uniswap-v3.module';
 
 @Module({
   imports: [
@@ -17,7 +18,7 @@ import { MarketTestModule } from './modules/market-test/market-test.module';
       isGlobal: true,
     }),
     ContractModule.forRoot({
-      rpcUrl: process.env.BASE_SEPOLIA_RPC_URL,
+      rpcUrl: `https://base-sepolia.g.alchemy.com/v2/${process.env.ALCHEMY_API_KEY}`,
       privateKey: process.env.PRIVATE_KEY,
     }),
     AlchemyModule.forRoot({
@@ -32,6 +33,22 @@ import { MarketTestModule } from './modules/market-test/market-test.module';
       apiKey: process.env.VOYAGE_API_KEY,
       baseUrl: process.env.VOYAGE_API_URL,
       model: process.env.VOYAGE_MODEL,
+    }),
+    UniswapV3Module.forRoot({
+      rpcUrls: {
+        mainnet: {
+          ethereum: `https://eth-mainnet.g.alchemy.com/v2/${process.env.ALCHEMY_API_KEY}`,
+          'arbitrum-one': `https://arb-mainnet.g.alchemy.com/v2/${process.env.ALCHEMY_API_KEY}`,
+          'polygon-pos': `https://polygon-mainnet.g.alchemy.com/v2/${process.env.ALCHEMY_API_KEY}`,
+          base: `https://base-mainnet.g.alchemy.com/v2/${process.env.ALCHEMY_API_KEY}`,
+        },
+        testnet: {
+          ethereum: `https://eth-sepolia.g.alchemy.com/v2/${process.env.ALCHEMY_API_KEY}`,
+          'arbitrum-one': `https://arb-sepolia.g.alchemy.com/v2/${process.env.ALCHEMY_API_KEY}`,
+          'polygon-pos': `https://polygon-amoy.g.alchemy.com/v2/${process.env.ALCHEMY_API_KEY}`,
+          base: `https://base-sepolia.g.alchemy.com/v2/${process.env.ALCHEMY_API_KEY}`,
+        },
+      },
     }),
     AgentModule,
     MarketTestModule,
