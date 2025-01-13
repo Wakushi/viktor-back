@@ -3,7 +3,11 @@ import { EmbeddingService } from './embedding.service';
 
 @Module({})
 export class EmbeddingModule {
-  static forRoot(config: { baseUrl: string; apiKey: string }): DynamicModule {
+  static forRoot(config: {
+    baseUrl: string;
+    apiKey: string;
+    model: string;
+  }): DynamicModule {
     return {
       module: EmbeddingModule,
       providers: [

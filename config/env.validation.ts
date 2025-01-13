@@ -8,6 +8,7 @@ export const envSchema = z.object({
   SECRET: z.string(),
   VOYAGE_API_KEY: z.string(),
   VOYAGE_API_URL: z.string(),
+  VOYAGE_MODEL: z.string(),
   ANTHROPIC_API_KEY: z.string(),
   SUPABASE_URL: z.string(),
   SUPABASE_API_KEY: z.string(),

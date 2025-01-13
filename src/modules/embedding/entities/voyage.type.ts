@@ -1,6 +1,7 @@
 export type VoyageClient = {
   baseUrl: string;
   apiKey: string;
+  model: string;
 };
 
 export interface VoyageEmbeddingData {
@@ -35,6 +36,7 @@ export interface VoyageEmbeddingOptions {
 export type VoyageConfig = {
   baseUrl: string;
   apiKey: string;
+  model: string;
 };
 
 export interface CosineResult {

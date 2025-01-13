@@ -23,4 +23,25 @@ export class MarketTestController {
       results: results.results,
     };
   }
+
+  @Post('signal-correlation')
+  @HttpCode(200)
+  async testSignalCorrelation() {
+    const results = await this.marketTestService.runSignalCorrelationTest();
+
+    return {
+      test: 'Signal Correlation Test',
+      baseCase: {
+        price_change: results.baseCase.price_change_24h_pct,
+        volume_change: results.baseCase.volume_change_24h_pct,
+        sentiment: results.baseCase.sentiment_score,
+      },
+      variations: results.variations.map((v) => ({
+        price_change: v.price_change_24h_pct,
+        volume_change: v.volume_change_24h_pct,
+        sentiment: v.sentiment_score,
+      })),
+      results: results.results,
+    };
+  }
 }

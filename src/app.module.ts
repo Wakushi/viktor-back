@@ -31,6 +31,7 @@ import { MarketTestModule } from './modules/market-test/market-test.module';
     EmbeddingModule.forRoot({
       apiKey: process.env.VOYAGE_API_KEY,
       baseUrl: process.env.VOYAGE_API_URL,
+      model: process.env.VOYAGE_MODEL,
     }),
     AgentModule,
     MarketTestModule,

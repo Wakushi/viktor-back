@@ -21,6 +21,7 @@ export class EmbeddingService {
     this.voyageClient = {
       baseUrl: config.baseUrl,
       apiKey: config.apiKey,
+      model: config.model,
     };
   }
 
@@ -47,9 +48,11 @@ export class EmbeddingService {
     try {
       this.verifyEmbeddingPayload(documents);
 
+      const MODEL = this.voyageClient.model || 'voyage-3';
+
       const requestBody = {
         input: documents,
-        model: 'voyage-3',
+        model: MODEL,
         input_type: 'document',
         truncation: true,
       };
