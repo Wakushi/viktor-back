@@ -28,13 +28,16 @@ export class AgentController {
     }
 
     if (this.lockService.acquireLock(uuid)) {
-      const decision = await this.agentService.analyzeAndMakeDecision(wallet);
+      const tokens = await this.agentService.analyzeAndMakeDecision(wallet);
 
       // await this.agentService.submitDecision({
       //   uuid,
       //   decision,
       //   walletAddress,
       // });
+
+      // This is a temporary testing return value
+      return tokens;
     }
 
     return { message: 'Ok' };

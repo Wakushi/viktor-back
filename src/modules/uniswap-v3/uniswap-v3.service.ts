@@ -27,12 +27,12 @@ export class UniswapV3Service {
   public async doesPoolExists({
     tokenA,
     tokenB,
-    poolFee,
+    poolFee = FeeAmount.MEDIUM,
     network = 'mainnet',
   }: {
     tokenA: TokenMarketData;
     tokenB: TokenMarketData;
-    poolFee: FeeAmount;
+    poolFee?: FeeAmount;
     network?: 'mainnet' | 'testnet';
   }): Promise<boolean> {
     const poolAddress = await this.getPoolAddress({
@@ -48,12 +48,12 @@ export class UniswapV3Service {
   public async getPoolAddress({
     tokenA,
     tokenB,
-    poolFee,
+    poolFee = FeeAmount.MEDIUM,
     network = 'mainnet',
   }: {
     tokenA: TokenMarketData;
     tokenB: TokenMarketData;
-    poolFee: FeeAmount;
+    poolFee?: FeeAmount;
     network?: 'mainnet' | 'testnet';
   }): Promise<Address> {
     try {
@@ -64,10 +64,6 @@ export class UniswapV3Service {
       const factoryAddress = UNISWAP_V3_FACTORY[chainInfo.name];
 
       if (!factoryAddress) {
-        console.error(
-          `No Uniswap V3 Factory found for chain ${chainInfo.name}`,
-        );
-
         return ethers.ZeroAddress as Address;
       }
 

@@ -68,22 +68,14 @@ export class TokenDataService {
     try {
       const rawTokens = await this.fetchInitialTokenList();
 
-      console.log(`Fetched initial list of ${rawTokens.length} tokens`);
-
       const filteredTokens = await this.applyBaselineFilters(rawTokens, params);
 
-      console.log(`Filtered to ${filteredTokens.length} tokens`);
-
       const enrichedTokens = await this.enrichTokenData(filteredTokens);
-
-      console.log(`Enriched ${enrichedTokens.length} tokens with metadata`);
 
       const evmChainsTokens = this.filterByChain(
         enrichedTokens,
         WHITELISTED_CHAINS,
       );
-
-      console.log(`Found ${evmChainsTokens.length} evm-compatible tokens`);
 
       const rankedTokens = this.rankTokensByQuality(evmChainsTokens);
 
@@ -307,31 +299,5 @@ export class TokenDataService {
     }
 
     return token;
-  }
-
-  private async fetchHolderCount(address: Address): Promise<number> {
-    const moralisApiKey = this.config.get('MORALIS_API_KEY');
-
-    try {
-      const response = await fetch(
-        `https://deep-index.moralis.io/api/v2.2/erc20/${address}/owners?chain=eth&limit=100`,
-        {
-          headers: {
-            accept: 'application/json',
-            'X-API-Key': moralisApiKey,
-          },
-        },
-      );
-
-      if (!response.ok) {
-        throw new Error(`HTTP error! status: ${response.status}`);
-      }
-
-      const data = await response.json();
-      return data.total || 0;
-    } catch (error) {
-      console.error(`Error fetching holder count for ${address}:`, error);
-      return 0;
-    }
   }
 }

@@ -5,17 +5,22 @@ import { Decision } from './entities/decision.entity';
 import { generateRequestId } from 'src/shared/utils/helpers';
 import { ContractService } from '../contract/contract.service';
 import { TokenDataService } from 'src/shared/services/token-data/token-data.service';
+import { UniswapV3Service } from '../uniswap-v3/uniswap-v3.service';
+import { TokenMarketData } from 'src/shared/services/token-data/entities/token.type';
+import { FeeAmount } from '@uniswap/v3-sdk';
+import { WETH } from 'mocks/tokens';
 
 @Injectable()
 export class AgentService {
   constructor(
     private readonly contractService: ContractService,
     private readonly tokenDataService: TokenDataService,
+    private readonly uniswapV3Service: UniswapV3Service,
   ) {}
 
   public async analyzeAndMakeDecision(
     walletAddress: Address,
-  ): Promise<Decision | null> {
+  ): Promise<TokenMarketData[]> {
     try {
       return await this.analyseMarket(walletAddress);
     } catch (error) {
@@ -24,22 +29,36 @@ export class AgentService {
     }
   }
 
-  private async analyseMarket(walletAddress: Address): Promise<Decision> {
-    const walletTokens =
-      await this.tokenDataService.getWalletBalances(walletAddress);
+  private async analyseMarket(
+    walletAddress: Address,
+  ): Promise<TokenMarketData[]> {
+    // const walletTokens =
+    //   await this.tokenDataService.getWalletBalances(walletAddress);
 
-    // Perform token discovery
-    const discoveredTokens = await this.tokenDataService.discoverTokens();
+    const tokenResults = await this.tokenDataService.discoverTokens();
 
-    // Filter token based on requirements
+    const tokenWithPools: TokenMarketData[] = [];
 
-    // Generate market observation for each token
+    for (let discoveredToken of tokenResults) {
+      let hasPool = false;
 
-    return {
-      action: 'BUY',
-      token: ethers.getAddress('0x33A3303eE744f2Fd85994CAe5E625050b32db453'),
-      amount: parseEther('10').toString(),
-    };
+      hasPool = await this.uniswapV3Service.doesPoolExists({
+        tokenA: discoveredToken,
+        tokenB: WETH,
+      });
+
+      if (hasPool) {
+        tokenWithPools.push(discoveredToken);
+      }
+    }
+
+    return tokenWithPools;
+
+    // return {
+    //   action: 'BUY',
+    //   token: ethers.getAddress('0x33A3303eE744f2Fd85994CAe5E625050b32db453'),
+    //   amount: parseEther('10').toString(),
+    // };
   }
 
   private async submitDecision({

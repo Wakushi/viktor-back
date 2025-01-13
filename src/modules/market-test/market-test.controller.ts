@@ -51,32 +51,4 @@ export class MarketTestController {
       results: results.results,
     };
   }
-
-  @Get('pools')
-  @HttpCode(200)
-  async checkPools() {
-    const tokenA: TokenMarketData = MOCKED_TOKENS[2];
-    const tokenB: TokenMarketData = WETH;
-
-    const fees = [
-      FeeAmount.LOWEST, // 0.01%
-      FeeAmount.LOW, // 0.05%
-      FeeAmount.MEDIUM, // 0.3%
-      FeeAmount.HIGH, // 1%
-    ];
-
-    for (let fee of fees) {
-      const exists = await this.uniswapv3Service.doesPoolExists({
-        tokenA,
-        tokenB,
-        poolFee: fee,
-      });
-
-      if (exists) {
-        console.log(
-          `Pool found for Token ${tokenA.name} and ${tokenB.name} (${fee / 10000}% fee)`,
-        );
-      }
-    }
-  }
 }
