@@ -305,7 +305,9 @@ function transformToEmbeddingText(
   // Generate enhanced signal component
   const signalText = generateEnhancedSignalDescription(observation, normalized);
 
-  return `${narrativeText} [SIGNALS] ${signalText}`;
+  const result = `${narrativeText} [SIGNALS] ${signalText}`;
+
+  return result;
 }
 
 function generateEnhancedSignalDescription(

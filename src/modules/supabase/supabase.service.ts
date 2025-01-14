@@ -6,7 +6,6 @@ import {
   MatchResult,
   QueryFunctions,
 } from './entities/collections.type';
-import { CoinGeckoTokenMetadata } from 'src/shared/services/token-data/entities/coin-gecko.type';
 
 @Injectable()
 export class SupabaseService {
@@ -85,9 +84,8 @@ export class SupabaseService {
     }
   }
 
-  async getTokenMetadataById(
-    id: string,
-  ): Promise<CoinGeckoTokenMetadata | null> {
+  // TO-DO add proper types
+  async getTokenMetadataById(id: string): Promise<any | null> {
     try {
       const { data, error } = await this.client
         .from('token_metadata')
@@ -104,7 +102,8 @@ export class SupabaseService {
     }
   }
 
-  async insertTokenMetadata(metadata: CoinGeckoTokenMetadata): Promise<void> {
+  // TO-DO add proper types
+  async insertTokenMetadata(metadata: any): Promise<void> {
     const { error } = await this.client.from('token_metadata').upsert(metadata);
 
     if (error) {

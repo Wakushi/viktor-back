@@ -1,6 +1,9 @@
-import { Chain } from 'src/shared/services/token-data/entities/chain.type';
+export type SimplifiedChain = {
+  name: string;
+  chainId: number;
+};
 
-export const WHITELISTED_CHAINS: Chain[] = [
+export const WHITELISTED_CHAINS: SimplifiedChain[] = [
   { name: 'arbitrum-one', chainId: 42161 },
   { name: 'ethereum', chainId: 1 },
   { name: 'avalanche', chainId: 43114 },

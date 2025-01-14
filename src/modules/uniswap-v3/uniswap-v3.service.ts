@@ -1,8 +1,7 @@
 import { Inject, Injectable } from '@nestjs/common';
 import { FeeAmount } from '@uniswap/v3-sdk';
 import { ethers } from 'ethers';
-import { TokenMarketData } from 'src/shared/services/token-data/entities/token.type';
-import { extractTokenChains } from 'src/shared/utils/helpers';
+import { extractTokenChains, isWethToken } from 'src/shared/utils/helpers';
 import {
   UNISWAP_V3_FACTORY,
   UNISWAP_V3_FACTORY_ABI,
@@ -10,6 +9,7 @@ import {
 import { WETH_ADDRESSES } from 'src/shared/utils/constants/chains';
 import { RpcUrlConfig } from './entities/rpc-url-config.type';
 import { Address, zeroAddress } from 'viem';
+import { TokenData } from '../tokens/entities/token.type';
 
 @Injectable()
 export class UniswapV3Service {
@@ -30,8 +30,8 @@ export class UniswapV3Service {
     poolFee = FeeAmount.MEDIUM,
     network = 'mainnet',
   }: {
-    tokenA: TokenMarketData;
-    tokenB: TokenMarketData;
+    tokenA: TokenData;
+    tokenB: TokenData;
     poolFee?: FeeAmount;
     network?: 'mainnet' | 'testnet';
   }): Promise<boolean> {
@@ -51,13 +51,13 @@ export class UniswapV3Service {
     poolFee = FeeAmount.MEDIUM,
     network = 'mainnet',
   }: {
-    tokenA: TokenMarketData;
-    tokenB: TokenMarketData;
+    tokenA: TokenData;
+    tokenB: TokenData;
     poolFee?: FeeAmount;
     network?: 'mainnet' | 'testnet';
   }): Promise<Address> {
     try {
-      const chainInfo = this.isWethToken(tokenA)
+      const chainInfo = isWethToken(tokenA)
         ? extractTokenChains(tokenB)[0]
         : extractTokenChains(tokenA)[0];
 
@@ -76,13 +76,17 @@ export class UniswapV3Service {
         provider,
       );
 
-      const tokenAAddress = this.isWethToken(tokenA)
+      const tokenAAddress = isWethToken(tokenA)
         ? WETH_ADDRESSES[chainInfo.name]
-        : tokenA.metadata.contract_addresses[chainInfo.name].contract_address;
+        : tokenA.metadata.contract_addresses[chainInfo.name]?.contract_address;
 
-      const tokenBAddress = this.isWethToken(tokenB)
+      const tokenBAddress = isWethToken(tokenB)
         ? WETH_ADDRESSES[chainInfo.name]
-        : tokenB.metadata.contract_addresses[chainInfo.name].contract_address;
+        : tokenB.metadata.contract_addresses[chainInfo.name]?.contract_address;
+
+      if (!tokenAAddress || !tokenBAddress) {
+        throw new Error('One token contract address is not found');
+      }
 
       const poolAddress = await factory.getPool(
         tokenAAddress,
@@ -108,12 +112,5 @@ export class UniswapV3Service {
     }
 
     return rpcUrl;
-  }
-
-  private isWethToken(token: TokenMarketData): boolean {
-    return (
-      token.symbol.toLowerCase() === 'eth' ||
-      token.symbol.toLowerCase() === 'weth'
-    );
   }
 }

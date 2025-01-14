@@ -4,6 +4,8 @@ import {
   Body,
   HttpCode,
   BadRequestException,
+  Get,
+  Param,
 } from '@nestjs/common';
 import { AgentService } from './agent.service';
 import { MakeDecisionDto } from './dto/decision.dto';
@@ -41,5 +43,23 @@ export class AgentController {
     }
 
     return { message: 'Ok' };
+  }
+
+  @Get('token/:tokenId')
+  @HttpCode(200)
+  async checkTokenMetadata(@Param('tokenId') tokenId: string) {
+    const COINGECKO_API = 'https://api.coingecko.com/api/v3';
+
+    const response = await fetch(
+      `${COINGECKO_API}/coins/${tokenId}?localization=false`,
+    );
+
+    if (!response.ok) {
+      throw new Error(`CoinGecko API error: ${response.status}`);
+    }
+
+    const data = await response.json();
+
+    return data;
   }
 }

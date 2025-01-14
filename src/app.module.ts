@@ -10,6 +10,7 @@ import { SupabaseModule } from './modules/supabase/supabase.module';
 import { EmbeddingModule } from './modules/embedding/embedding.module';
 import { MarketTestModule } from './modules/market-test/market-test.module';
 import { UniswapV3Module } from './modules/uniswap-v3/uniswap-v3.module';
+import { TokensModule } from './modules/tokens/tokens.module';
 
 @Module({
   imports: [
@@ -52,6 +53,7 @@ import { UniswapV3Module } from './modules/uniswap-v3/uniswap-v3.module';
     }),
     AgentModule,
     MarketTestModule,
+    TokensModule.forRoot(),
   ],
 })
 export class AppModule {

@@ -1,26 +1,21 @@
 import { Injectable } from '@nestjs/common';
-import { Address, parseEther } from 'viem';
-import { ethers } from 'ethers';
+import { Address } from 'viem';
 import { Decision } from './entities/decision.entity';
 import { generateRequestId } from 'src/shared/utils/helpers';
 import { ContractService } from '../contract/contract.service';
-import { TokenDataService } from 'src/shared/services/token-data/token-data.service';
-import { UniswapV3Service } from '../uniswap-v3/uniswap-v3.service';
-import { TokenMarketData } from 'src/shared/services/token-data/entities/token.type';
-import { FeeAmount } from '@uniswap/v3-sdk';
-import { WETH } from 'mocks/tokens';
+import { TokenData } from 'src/modules/tokens/entities/token.type';
+import { TokensService } from '../tokens/tokens.service';
 
 @Injectable()
 export class AgentService {
   constructor(
     private readonly contractService: ContractService,
-    private readonly tokenDataService: TokenDataService,
-    private readonly uniswapV3Service: UniswapV3Service,
+    private readonly tokensService: TokensService,
   ) {}
 
   public async analyzeAndMakeDecision(
     walletAddress: Address,
-  ): Promise<TokenMarketData[]> {
+  ): Promise<TokenData[]> {
     try {
       return await this.analyseMarket(walletAddress);
     } catch (error) {
@@ -29,30 +24,15 @@ export class AgentService {
     }
   }
 
-  private async analyseMarket(
-    walletAddress: Address,
-  ): Promise<TokenMarketData[]> {
+  private async analyseMarket(walletAddress: Address): Promise<TokenData[]> {
     // const walletTokens =
     //   await this.tokenDataService.getWalletBalances(walletAddress);
 
-    const tokenResults = await this.tokenDataService.discoverTokens();
+    const tokens: TokenData[] = await this.tokensService.discoverTokens();
 
-    const tokenWithPools: TokenMarketData[] = [];
+    console.log(`Analyse market results: ${tokens.length} identified.`);
 
-    for (let discoveredToken of tokenResults) {
-      let hasPool = false;
-
-      hasPool = await this.uniswapV3Service.doesPoolExists({
-        tokenA: discoveredToken,
-        tokenB: WETH,
-      });
-
-      if (hasPool) {
-        tokenWithPools.push(discoveredToken);
-      }
-    }
-
-    return tokenWithPools;
+    return tokens;
 
     // return {
     //   action: 'BUY',

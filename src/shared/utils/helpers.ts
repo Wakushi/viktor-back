@@ -1,7 +1,6 @@
 import { ethers } from 'ethers';
-import { TokenMarketData } from '../services/token-data/entities/token.type';
-import { Chain } from '../services/token-data/entities/chain.type';
-import { WHITELISTED_CHAINS } from './constants/chains';
+import { SimplifiedChain, WHITELISTED_CHAINS } from './constants/chains';
+import { TokenData } from 'src/modules/tokens/entities/token.type';
 
 export function generateRequestId(uuid: string): string {
   return ethers.keccak256(ethers.solidityPacked(['string'], [uuid]));
@@ -51,7 +50,7 @@ export function getChainId(name: string): number | null {
   return chain ? chain.chainId : null;
 }
 
-export function extractTokenChains(token: TokenMarketData): Chain[] {
+export function extractTokenChains(token: TokenData): SimplifiedChain[] {
   if (!token?.metadata?.contract_addresses) return [];
 
   return Object.keys(token.metadata.contract_addresses).map((chain) => ({
@@ -61,13 +60,13 @@ export function extractTokenChains(token: TokenMarketData): Chain[] {
 }
 
 export function findSimilarChain(
-  tokenA: TokenMarketData,
-  tokenB: TokenMarketData,
-): Chain | null {
+  tokenA: TokenData,
+  tokenB: TokenData,
+): SimplifiedChain | null {
   const tokenAChains = extractTokenChains(tokenA);
   const tokenBChains = extractTokenChains(tokenB);
 
-  let similarChain: Chain | null = null;
+  let similarChain: SimplifiedChain | null = null;
 
   tokenAChains.forEach((tokenAChain) => {
     if (
@@ -82,9 +81,9 @@ export function findSimilarChain(
   return similarChain;
 }
 
-export function isWethToken(token: TokenMarketData): boolean {
+export function isWethToken(token: TokenData): boolean {
   return (
-    token.symbol.toLowerCase() === 'eth' ||
-    token.symbol.toLowerCase() === 'weth'
+    token?.metadata?.symbol.toLowerCase() === 'eth' ||
+    token?.metadata?.symbol.toLowerCase() === 'weth'
   );
 }

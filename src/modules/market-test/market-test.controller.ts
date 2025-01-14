@@ -1,9 +1,6 @@
 import { Controller, Post, HttpCode, Get } from '@nestjs/common';
 import { MarketTestService } from './market-test.service';
-import { MOCKED_TOKENS, WETH } from 'mocks/tokens';
-import { FeeAmount } from '@uniswap/v3-sdk';
 import { UniswapV3Service } from '../uniswap-v3/uniswap-v3.service';
-import { TokenMarketData } from 'src/shared/services/token-data/entities/token.type';
 
 @Controller('market-test')
 export class MarketTestController {

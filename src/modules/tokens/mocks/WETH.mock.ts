@@ -1,0 +1,65 @@
+import { TokenData } from '../entities/token.type';
+
+export const WETH: TokenData = {
+  market: {
+    coinGeckoId: 'weth',
+    timestamp: 1736876471462,
+    market_cap_rank: 22,
+    price_usd: 3200.5,
+    high_24h: 3248.56,
+    low_24h: 2995.38,
+    ath: 4799.89,
+    ath_change_percentage: -33.32162,
+    atl: 82.1,
+    total_volume: 1051235050,
+    atl_change_percentage: 3798.12199,
+    market_cap: 10045322202,
+    fully_diluted_valuation: 10045322202,
+    circulating_supply: 3141412.758566043,
+    total_supply: 3141412.758566043,
+    max_supply: null,
+    supply_ratio: 1,
+    price_change_24h: 171.01,
+    price_change_percentage_24h: 5.64485,
+    market_cap_change_24h: 458106892,
+    market_cap_change_percentage_24h: 4.77831,
+  },
+  metadata: {
+    id: 'weth',
+    symbol: 'weth',
+    name: 'WETH',
+    contract_addresses: {
+      tron: {
+        decimal_place: 18,
+        contract_address: 'THb4CqiFdwNHsWsQCs4JhzwjMWys4aqCbF',
+      },
+      ethereum: {
+        decimal_place: 18,
+        contract_address: '0xc02aaa39b223fe8d0a0e5c4f27ead9083c756cc2',
+      },
+    },
+    market_cap_rank: 21,
+    genesis_date: '2016-06-17T00:00:00+00:00',
+    categories: [
+      'Crypto-Backed Tokens',
+      'Wrapped-Tokens',
+      'Ethereum Ecosystem',
+      'FTX Holdings',
+      'Tron Ecosystem',
+      'Index Coop Defi Index',
+      'Index Coop Index',
+    ],
+    links: {
+      github: [],
+      twitter: '',
+      website: ['https://weth.io/'],
+      telegram: '',
+    },
+    platforms: {
+      tron: 'THb4CqiFdwNHsWsQCs4JhzwjMWys4aqCbF',
+      ethereum: '0xc02aaa39b223fe8d0a0e5c4f27ead9083c756cc2',
+    },
+    last_updated: '2025-01-13T20:52:59.899+00:00',
+    created_at: '2025-01-13T20:52:59.899+00:00',
+  },
+};
