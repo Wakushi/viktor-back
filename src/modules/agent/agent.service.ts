@@ -1,6 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import { Address } from 'viem';
-import { Decision } from './entities/decision.entity';
+import { Decision } from './entities/decision.type';
 import { generateRequestId } from 'src/shared/utils/helpers';
 import { ContractService } from '../contract/contract.service';
 import { TokenData } from 'src/modules/tokens/entities/token.type';
