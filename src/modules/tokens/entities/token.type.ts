@@ -4,10 +4,9 @@ export interface TokenData {
 }
 
 export interface TokenMarketObservation {
+  coinGeckoId: string;
   timestamp: number;
   created_at?: Date;
-  coinGeckoId: string;
-
   market_cap_rank: number;
   price_usd: number;
   high_24h: number;

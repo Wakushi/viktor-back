@@ -8,6 +8,13 @@ import {
 import { SupabaseError, SupabaseService } from '../supabase/supabase.service';
 import { DocumentEmbedding } from './entities/embedding.type';
 import { MatchResult } from '../supabase/entities/collections.type';
+import {
+  calculateNormalizedMetrics,
+  combineNarratives,
+  generateEnhancedSignalDescription,
+  generateMarketNarratives,
+} from './helpers/market-data-formatting';
+import { TokenMarketObservation } from '../tokens/entities/token.type';
 
 @Injectable()
 export class EmbeddingService {
@@ -85,6 +92,22 @@ export class EmbeddingService {
     } catch (error) {
       this.handleCreateEmbeddingError(error);
     }
+  }
+
+  public getEmbeddingTextFromObservation(observation: TokenMarketObservation) {
+    const normalized = calculateNormalizedMetrics(observation);
+
+    const narratives = generateMarketNarratives(observation, normalized);
+    const narrativeText = combineNarratives(narratives, observation);
+
+    const signalText = generateEnhancedSignalDescription(
+      observation,
+      normalized,
+    );
+
+    const result = `${narrativeText} [SIGNALS] ${signalText}`;
+
+    return result;
   }
 
   public async findNearestMatch({

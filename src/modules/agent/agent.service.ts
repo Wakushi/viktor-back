@@ -5,40 +5,37 @@ import { generateRequestId } from 'src/shared/utils/helpers';
 import { ContractService } from '../contract/contract.service';
 import { TokenData } from 'src/modules/tokens/entities/token.type';
 import { TokensService } from '../tokens/tokens.service';
+import { EmbeddingService } from '../embedding/embedding.service';
 
 @Injectable()
 export class AgentService {
   constructor(
     private readonly contractService: ContractService,
     private readonly tokensService: TokensService,
+    private readonly embeddingService: EmbeddingService,
   ) {}
 
   public async analyzeAndMakeDecision(
     walletAddress: Address,
   ): Promise<TokenData[]> {
     try {
-      return await this.analyseMarket(walletAddress);
+      const tokens: TokenData[] = await this.tokensService.discoverTokens();
+
+      for (let token of tokens) {
+        // Produce a text embedding from each token.market data
+        const embeddingText =
+          this.embeddingService.getEmbeddingTextFromObservation(token.market);
+
+        // Perform a cosine query on each embedding generated
+
+        // Map the results to each token
+      }
+
+      return tokens;
     } catch (error) {
-      this.handleAnalysisError(error);
+      console.error('Error in handleAnalysis:', error);
       return null;
     }
-  }
-
-  private async analyseMarket(walletAddress: Address): Promise<TokenData[]> {
-    // const walletTokens =
-    //   await this.tokenDataService.getWalletBalances(walletAddress);
-
-    const tokens: TokenData[] = await this.tokensService.discoverTokens();
-
-    console.log(`Analyse market results: ${tokens.length} identified.`);
-
-    return tokens;
-
-    // return {
-    //   action: 'BUY',
-    //   token: ethers.getAddress('0x33A3303eE744f2Fd85994CAe5E625050b32db453'),
-    //   amount: parseEther('10').toString(),
-    // };
   }
 
   private async submitDecision({
@@ -79,10 +76,6 @@ export class AgentService {
     } catch (error: any) {
       console.error('Error submitting to contract :', error);
     }
-  }
-
-  private handleAnalysisError(error: unknown): void {
-    console.error('Error in handleAnalysis:', error);
   }
 
   private getActionId(action: string): number {
