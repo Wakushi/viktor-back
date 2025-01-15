@@ -1,4 +1,4 @@
-CREATE TABLE trading_outcomes (
+CREATE TABLE trading_decisions (
     -- Core identifiers
     id BIGSERIAL PRIMARY KEY,
     observation_id BIGINT REFERENCES market_observations(id),
@@ -6,13 +6,13 @@ CREATE TABLE trading_outcomes (
     token_address TEXT NOT NULL CHECK (token_address ~ '^0x[a-fA-F0-9]{40}$'),
     
     -- Decision details
-    decision_type TEXT NOT NULL CHECK (decision_type IN ('BUY', 'SELL', 'WAIT')),
+    decision_type TEXT NOT NULL CHECK (decision_type IN ('BUY', 'SELL')),
     decision_timestamp BIGINT NOT NULL,
     decision_price_usd NUMERIC NOT NULL,
     confidence_score NUMERIC CHECK (confidence_score >= 0 AND confidence_score <= 1),
     
     -- Previous BUY reference
-    previous_buy_id BIGINT REFERENCES trading_outcomes(id),
+    previous_buy_id BIGINT REFERENCES trading_decisions(id),
     previous_buy_price_usd NUMERIC,
     
     -- Status tracking
@@ -55,12 +55,12 @@ CREATE TABLE trading_outcomes (
 );
 
 -- Indexes
-CREATE INDEX idx_trading_outcomes_observation ON trading_outcomes(observation_id);
-CREATE INDEX idx_trading_outcomes_wallet ON trading_outcomes(wallet_address);
-CREATE INDEX idx_trading_outcomes_token ON trading_outcomes(token_address);
-CREATE INDEX idx_trading_outcomes_status ON trading_outcomes(status);
-CREATE INDEX idx_trading_outcomes_next_update ON trading_outcomes(next_update_due);
-CREATE INDEX idx_trading_outcomes_decision ON trading_outcomes(token_address, decision_type, decision_timestamp DESC);
+CREATE INDEX idx_trading_decisions_observation ON trading_decisions(observation_id);
+CREATE INDEX idx_trading_decisions_wallet ON trading_decisions(wallet_address);
+CREATE INDEX idx_trading_decisions_token ON trading_decisions(token_address);
+CREATE INDEX idx_trading_decisions_status ON trading_decisions(status);
+CREATE INDEX idx_trading_decisions_next_update ON trading_decisions(next_update_due);
+CREATE INDEX idx_trading_decisions_decision ON trading_decisions(token_address, decision_type, decision_timestamp DESC);
 
 -- Helper function to find last BUY price for a token
 CREATE OR REPLACE FUNCTION get_last_buy_price(
@@ -73,7 +73,7 @@ CREATE OR REPLACE FUNCTION get_last_buy_price(
 BEGIN
     RETURN QUERY
     SELECT id, decision_price_usd
-    FROM trading_outcomes
+    FROM trading_decisions
     WHERE token_address = p_token_address
     AND decision_type = 'BUY'
     AND decision_timestamp < p_before_timestamp

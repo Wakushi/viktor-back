@@ -6,6 +6,13 @@ import { ContractService } from '../contract/contract.service';
 import { TokenData } from 'src/modules/tokens/entities/token.type';
 import { TokensService } from '../tokens/tokens.service';
 import { EmbeddingService } from '../embedding/embedding.service';
+import { SupabaseService } from '../supabase/supabase.service';
+import {
+  calculateBuyingConfidence,
+  calculateDecisionTypeStats,
+  calculateProfitabilityScore,
+} from './helpers/decision-computation';
+import { TokenAnalysisResult } from './entities/analysis-result.type';
 
 @Injectable()
 export class AgentService {
@@ -13,29 +20,113 @@ export class AgentService {
     private readonly contractService: ContractService,
     private readonly tokensService: TokensService,
     private readonly embeddingService: EmbeddingService,
+    private readonly supabaseService: SupabaseService,
   ) {}
 
-  public async analyzeAndMakeDecision(
-    walletAddress: Address,
-  ): Promise<TokenData[]> {
+  public async seekMarketBuyingTargets(): Promise<TokenAnalysisResult[]> {
     try {
       const tokens: TokenData[] = await this.tokensService.discoverTokens();
 
-      for (let token of tokens) {
-        // Produce a text embedding from each token.market data
+      return await this.analyzeTokens(tokens);
+    } catch (error) {
+      console.error('Error in analyzeAndMakeDecision:', error);
+      return [];
+    }
+  }
+
+  public async analyzeTokens(
+    tokens: TokenData[],
+  ): Promise<TokenAnalysisResult[]> {
+    const analysisResults: TokenAnalysisResult[] = [];
+
+    const SIMILARITY_THRESHOLD = 0.5;
+    const MATCH_COUNT = 10;
+    const MINIMUM_CONFIDENCE_TO_BUY = 0.7;
+    const PROFITABLE_THRESHOLD = 0.6;
+
+    const WEIGHTS = {
+      decisionTypeRatio: 0.35,
+      similarity: 0.25,
+      profitability: 0.25,
+      confidence: 0.15,
+    };
+
+    for (const token of tokens) {
+      try {
         const embeddingText =
           this.embeddingService.getEmbeddingTextFromObservation(token.market);
 
-        // Perform a cosine query on each embedding generated
+        const similarConditions = await this.embeddingService.findNearestMatch({
+          query: embeddingText,
+          matchThreshold: SIMILARITY_THRESHOLD,
+          matchCount: MATCH_COUNT,
+        });
 
-        // Map the results to each token
+        console.log(
+          `Token ${token.metadata.symbol} Similar Conditions:`,
+          similarConditions.map((c) => ({
+            id: c.id,
+            similarity: c.similarity,
+            price: c.price_usd,
+          })),
+        );
+
+        const allDecisions = await Promise.all(
+          similarConditions.map(async (condition) => {
+            const decision =
+              await this.supabaseService.getDecisionByMarketObservationId(
+                condition.id,
+              );
+
+            if (!decision) return;
+
+            return {
+              marketCondition: condition,
+              decision,
+              similarity: condition.similarity,
+              profitabilityScore: calculateProfitabilityScore(decision),
+            };
+          }),
+        );
+
+        const decisions = allDecisions.filter((d) => d);
+
+        if (decisions.length === 0) continue;
+
+        const decisionStats = calculateDecisionTypeStats(
+          decisions,
+          PROFITABLE_THRESHOLD,
+        );
+
+        const buyingConfidence = calculateBuyingConfidence(
+          decisions,
+          decisionStats,
+          WEIGHTS,
+        );
+
+        analysisResults.push({
+          token,
+          buyingConfidence,
+          similarDecisions: decisions,
+          decisionTypeRatio: decisionStats,
+        });
+      } catch (error) {
+        console.error(`Error analyzing token ${token.metadata.symbol}:`, error);
       }
-
-      return tokens;
-    } catch (error) {
-      console.error('Error in handleAnalysis:', error);
-      return null;
     }
+
+    console.log(
+      'Final Analysis Results:',
+      analysisResults.map((r) => ({
+        symbol: r.token.metadata.symbol,
+        confidence: r.buyingConfidence,
+        decisionStats: r.decisionTypeRatio,
+      })),
+    );
+
+    return analysisResults
+      .filter((result) => result.buyingConfidence >= MINIMUM_CONFIDENCE_TO_BUY)
+      .sort((a, b) => b.buyingConfidence - a.buyingConfidence);
   }
 
   private async submitDecision({

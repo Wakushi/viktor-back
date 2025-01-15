@@ -1,13 +1,17 @@
+import { TokenMarketObservation } from 'src/modules/tokens/entities/token.type';
+
 export enum Collection {
-  DOCUMENT_EMBEDDINGS = 'document_embeddings',
+  TOKEN_METADATA = 'token_metadata',
+  MARKET_OBSERVATIONS = 'market_observations',
+  TRADING_DECISIONS = 'trading_decisions',
 }
 
 export enum QueryFunctions {
-  MATCH_DOCUMENT_EMBEDDINGS = 'match_document_embeddings',
+  MATCH_MARKET_OBSERVATIONS = 'match_market_observations',
 }
 
-export type MatchResult = {
-  content: any;
+export interface TokenMarketObservationMatchResult
+  extends TokenMarketObservation {
   id: number;
   similarity: number;
-};
+}

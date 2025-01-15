@@ -1,11 +1,11 @@
-interface TradingOutcome {
+interface TradingDecision {
   id: string;
   observation_id: string; // References market_observations table
   wallet_address: string; // Address that made the decision
   token_address: string; // Token being traded
 
   // Decision details
-  decision_type: 'BUY' | 'SELL' | 'WAIT';
+  decision_type: 'BUY' | 'SELL'
   decision_timestamp: number; // When decision was made
   decision_price_usd: number; // Price at decision time
   confidence_score: number; // 0-1 scale

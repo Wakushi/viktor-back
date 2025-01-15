@@ -2,7 +2,7 @@ import { TokenData } from '../entities/token.type';
 
 export const WETH: TokenData = {
   market: {
-    coinGeckoId: 'weth',
+    coin_gecko_id: 'weth',
     timestamp: 1736876471462,
     market_cap_rank: 22,
     price_usd: 3200.5,

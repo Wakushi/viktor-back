@@ -8,8 +8,9 @@ import {
   Param,
 } from '@nestjs/common';
 import { AgentService } from './agent.service';
-import { MakeDecisionDto } from './dto/decision.dto';
+import { MakeDecisionDto } from './dto/make-decision.dto';
 import { LockService } from 'src/shared/services/lock.service';
+import { TokenAnalysisResult } from './entities/analysis-result.type';
 
 @Controller('agent')
 export class AgentController {
@@ -30,16 +31,10 @@ export class AgentController {
     }
 
     if (this.lockService.acquireLock(uuid)) {
-      const tokens = await this.agentService.analyzeAndMakeDecision(wallet);
+      const analysisResults: TokenAnalysisResult[] =
+        await this.agentService.seekMarketBuyingTargets();
 
-      // await this.agentService.submitDecision({
-      //   uuid,
-      //   decision,
-      //   walletAddress,
-      // });
-
-      // This is a temporary testing return value
-      return tokens;
+      console.log('[Analysis result]: ', analysisResults);
     }
 
     return { message: 'Ok' };

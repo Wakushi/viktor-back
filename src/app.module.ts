@@ -10,6 +10,7 @@ import { SupabaseModule } from './modules/supabase/supabase.module';
 import { EmbeddingModule } from './modules/embedding/embedding.module';
 import { UniswapV3Module } from './modules/uniswap-v3/uniswap-v3.module';
 import { TokensModule } from './modules/tokens/tokens.module';
+import { SeedModule } from './modules/seed/seed.module';
 
 @Module({
   imports: [
@@ -50,8 +51,9 @@ import { TokensModule } from './modules/tokens/tokens.module';
         },
       },
     }),
-    AgentModule,
+    AgentModule.forRoot(),
     TokensModule.forRoot(),
+    SeedModule,
   ],
 })
 export class AppModule {

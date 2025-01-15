@@ -6,8 +6,7 @@ import {
   VoyageEmbeddingResponse,
 } from 'src/modules/embedding/entities/voyage.type';
 import { SupabaseError, SupabaseService } from '../supabase/supabase.service';
-import { DocumentEmbedding } from './entities/embedding.type';
-import { MatchResult } from '../supabase/entities/collections.type';
+import { MarketObservationEmbedding } from './entities/embedding.type';
 import {
   calculateNormalizedMetrics,
   combineNarratives,
@@ -15,6 +14,7 @@ import {
   generateMarketNarratives,
 } from './helpers/market-data-formatting';
 import { TokenMarketObservation } from '../tokens/entities/token.type';
+import { TokenMarketObservationMatchResult } from '../supabase/entities/collections.type';
 
 @Injectable()
 export class EmbeddingService {
@@ -32,25 +32,34 @@ export class EmbeddingService {
     };
   }
 
-  public async createSaveEmbeddings(documents: any[]): Promise<void> {
+  public async createSaveEmbedding(
+    marketObservation: TokenMarketObservation,
+  ): Promise<Omit<MarketObservationEmbedding, 'id'> | null> {
     try {
-      const embeddings = await this.createEmbeddings(documents);
+      const embeddingText =
+        this.getEmbeddingTextFromObservation(marketObservation);
 
-      const documentEmbeddings: DocumentEmbedding[] = embeddings.map(
-        ({ index, embedding }) => ({
-          content: documents[index],
-          embedding,
-        }),
+      const embeddings = await this.createEmbeddings([embeddingText]);
+
+      const marketObservationEmbedding: Omit<MarketObservationEmbedding, 'id'> =
+        {
+          ...marketObservation,
+          embedding: embeddings[0].embedding,
+        };
+
+      await this.supabaseService.insertMarketObservationEmbedding(
+        marketObservationEmbedding,
       );
 
-      await this.supabaseService.saveDocumentsEmbeddings(documentEmbeddings);
+      return marketObservationEmbedding;
     } catch (error: any) {
       console.error(error);
+      return null;
     }
   }
 
   public async createEmbeddings(
-    documents: any[],
+    documents: string[],
   ): Promise<VoyageEmbeddingData[]> {
     try {
       this.verifyEmbeddingPayload(documents);
@@ -88,13 +97,19 @@ export class EmbeddingService {
         throw new Error('Invalid response format from Voyage API');
       }
 
+      console.log(
+        `[EMBEDDING SERVICE] Generated embeddings for ${documents.length} documents.`,
+      );
+
       return voyageResponse.data;
     } catch (error) {
       this.handleCreateEmbeddingError(error);
     }
   }
 
-  public getEmbeddingTextFromObservation(observation: TokenMarketObservation) {
+  public getEmbeddingTextFromObservation(
+    observation: TokenMarketObservation,
+  ): string {
     const normalized = calculateNormalizedMetrics(observation);
 
     const narratives = generateMarketNarratives(observation, normalized);
@@ -105,9 +120,7 @@ export class EmbeddingService {
       normalized,
     );
 
-    const result = `${narrativeText} [SIGNALS] ${signalText}`;
-
-    return result;
+    return `${narrativeText} [SIGNALS] ${signalText}`;
   }
 
   public async findNearestMatch({
@@ -118,7 +131,7 @@ export class EmbeddingService {
     query: any;
     matchThreshold: number;
     matchCount: number;
-  }): Promise<MatchResult[]> {
+  }): Promise<TokenMarketObservationMatchResult[]> {
     try {
       this.verifyQuery(query);
 
@@ -128,13 +141,14 @@ export class EmbeddingService {
         throw new ValidationError('No embeddings generated for query');
       }
 
-      const matchingDocuments = await this.supabaseService.matchDocuments({
-        queryEmbedding: embeddings[0].embedding,
-        matchThreshold,
-        matchCount,
-      });
+      const matchingMarketObservations =
+        await this.supabaseService.matchMarketObservations({
+          queryEmbedding: embeddings[0].embedding,
+          matchThreshold,
+          matchCount,
+        });
 
-      return matchingDocuments;
+      return matchingMarketObservations;
     } catch (error) {
       console.error('Error in findNearestMatch:', error);
 

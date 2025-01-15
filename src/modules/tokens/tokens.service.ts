@@ -122,7 +122,7 @@ export class TokensService {
       const data = (await response.json()) as CoinGeckoSimpleToken[];
 
       return data.map((rawToken) => ({
-        coinGeckoId: rawToken.id,
+        coin_gecko_id: rawToken.id,
         timestamp: Date.now(),
         created_at: new Date(),
         market_cap_rank: rawToken.market_cap_rank,
@@ -160,7 +160,7 @@ export class TokensService {
     const completeTokens: TokenData[] = [];
 
     for (let token of tokens) {
-      const metadata = await this.getTokenMetadataById(token.coinGeckoId);
+      const metadata = await this.getTokenMetadataById(token.coin_gecko_id);
 
       if (metadata) {
         completeTokens.push({
