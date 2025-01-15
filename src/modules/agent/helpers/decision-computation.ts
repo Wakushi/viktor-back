@@ -35,30 +35,6 @@ function calculateDecisionTypeStats(
   );
 }
 
-function calculateWeightedAverage(values: number[]): number {
-  if (values.length === 0) return 0;
-
-  const sortedValues = [...values].sort((a, b) => b - a);
-  let weightedSum = 0;
-  let weightSum = 0;
-
-  sortedValues.forEach((value, index) => {
-    const weight = 1 / (index + 1);
-    weightedSum += value * weight;
-    weightSum += weight;
-  });
-
-  return weightedSum / weightSum;
-}
-
-function normalizePerformance(percentageChange: number): number {
-  const MAX_PERCENTAGE = 20;
-  return Math.max(
-    0,
-    Math.min(1, (percentageChange + MAX_PERCENTAGE) / (2 * MAX_PERCENTAGE)),
-  );
-}
-
 function calculateProfitabilityScore(decision: TradingDecision): number {
   if (decision.status !== 'COMPLETED') return 0;
 
@@ -103,6 +79,15 @@ function calculateProfitabilityScore(decision: TradingDecision): number {
   return 0;
 }
 
+// Utility function to normalize similarity from [0.4, 1.0] to [0, 1.0]
+function normalizeEmbeddingSimilarity(similarity: number): number {
+  const MIN_BASELINE = 0.4;
+  return Math.max(
+    0,
+    Math.min(1, (similarity - MIN_BASELINE) / (1 - MIN_BASELINE)),
+  );
+}
+
 function calculateBuyingConfidence(
   decisions: Array<{
     marketCondition: TokenMarketObservation;
@@ -126,30 +111,41 @@ function calculateBuyingConfidence(
   const totalDecisions = stats.buyCount + stats.sellCount;
   if (totalDecisions === 0) return 0;
 
-  // More sophisticated decision type scoring
+  // Decision type scoring remains the same
   const calculateDecisionTypeScore = () => {
     const profitableBuyRatio =
       stats.buyCount > 0 ? stats.profitableBuyCount / stats.buyCount : 0;
     const profitableSellRatio =
       stats.sellCount > 0 ? stats.profitableSellCount / stats.sellCount : 0;
 
-    // Introduce more non-linearity
     return Math.pow(
       profitableBuyRatio / (profitableBuyRatio + profitableSellRatio || 1),
       1.5,
     );
   };
 
-  // More dynamic weighted average that favors top performers
-  const calculateWeightedScore = (values: number[]) => {
+  // Modified weighted score calculation with normalized similarities
+  const calculateWeightedScore = (values: number[], similarities: number[]) => {
     if (values.length === 0) return 0;
 
-    // Sort and apply exponential decay to weights
-    const sortedValues = [...values].sort((a, b) => b - a);
-    const weights = sortedValues.map((_, index) => Math.pow(0.9, index));
+    // Sort by normalized similarity
+    const normalizedSimilarities = similarities.map(
+      normalizeEmbeddingSimilarity,
+    );
+    const pairs = values.map((value, index) => ({
+      value,
+      similarity: normalizedSimilarities[index],
+    }));
+    const sortedPairs = [...pairs].sort((a, b) => b.similarity - a.similarity);
 
-    const weightedSum = sortedValues.reduce(
-      (sum, value, index) => sum + value * weights[index],
+    // Apply exponential decay weighted by normalized similarity
+    const weights = sortedPairs.map(
+      (_, index) =>
+        Math.pow(0.9, index) * (sortedPairs[index].similarity + 0.1), // Add small constant to prevent zero weights
+    );
+
+    const weightedSum = sortedPairs.reduce(
+      (sum, pair, index) => sum + pair.value * weights[index],
       0,
     );
 
@@ -159,15 +155,17 @@ function calculateBuyingConfidence(
   const decisionTypeScore = calculateDecisionTypeScore();
   const similarityScore = calculateWeightedScore(
     decisions.map((d) => d.similarity),
+    decisions.map((d) => d.similarity), // Pass similarities twice since we're using them for both value and weight
   );
   const profitabilityScore = calculateWeightedScore(
     decisions.map((d) => d.profitabilityScore),
+    decisions.map((d) => d.similarity),
   );
   const confidenceScore = calculateWeightedScore(
     decisions.map((d) => d.decision.confidence_score),
+    decisions.map((d) => d.similarity),
   );
 
-  // More dynamic weighting and combination
   return (
     decisionTypeScore * weights.decisionTypeRatio +
     similarityScore * weights.similarity +

@@ -39,10 +39,10 @@ export class AgentService {
   ): Promise<TokenAnalysisResult[]> {
     const analysisResults: TokenAnalysisResult[] = [];
 
-    const SIMILARITY_THRESHOLD = 0.5;
-    const MATCH_COUNT = 10;
-    const MINIMUM_CONFIDENCE_TO_BUY = 0.7;
-    const PROFITABLE_THRESHOLD = 0.6;
+    const SIMILARITY_THRESHOLD = 0.7;
+    const MATCH_COUNT = 12;
+    const MINIMUM_CONFIDENCE_TO_BUY = 0.75;
+    const PROFITABLE_THRESHOLD = 0.65;
 
     const WEIGHTS = {
       decisionTypeRatio: 0.35,
@@ -61,15 +61,6 @@ export class AgentService {
           matchThreshold: SIMILARITY_THRESHOLD,
           matchCount: MATCH_COUNT,
         });
-
-        console.log(
-          `Token ${token.metadata.symbol} Similar Conditions:`,
-          similarConditions.map((c) => ({
-            id: c.id,
-            similarity: c.similarity,
-            price: c.price_usd,
-          })),
-        );
 
         const allDecisions = await Promise.all(
           similarConditions.map(async (condition) => {
@@ -114,15 +105,6 @@ export class AgentService {
         console.error(`Error analyzing token ${token.metadata.symbol}:`, error);
       }
     }
-
-    console.log(
-      'Final Analysis Results:',
-      analysisResults.map((r) => ({
-        symbol: r.token.metadata.symbol,
-        confidence: r.buyingConfidence,
-        decisionStats: r.decisionTypeRatio,
-      })),
-    );
 
     return analysisResults
       .filter((result) => result.buyingConfidence >= MINIMUM_CONFIDENCE_TO_BUY)

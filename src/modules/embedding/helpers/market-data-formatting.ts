@@ -575,48 +575,6 @@ function categorizeVolumeActivity(volumeToMcap: number): string {
   }
 }
 
-function generateSentimentSignal(
-  obs: TokenMarketObservation,
-  normalized: NormalizedMetrics,
-  weight: number,
-  alignmentFactor: number,
-): string {
-  // Calculate composite sentiment from multiple indicators
-  const sentiment = calculateCompositeSentiment(obs);
-  const category = categorizeSentiment(sentiment);
-
-  // Calculate signal strength based on the conviction of indicators
-  const strength = calculateSentimentStrength(obs, normalized);
-
-  // Calculate market engagement using volume and market cap
-  const engagement = Math.min(1.0, (obs.total_volume / obs.market_cap) * 5);
-
-  return `sentiment=${category}(${sentiment.toFixed(2)})[w=${weight.toFixed(2)}][s=${strength.toFixed(2)}][e=${engagement.toFixed(2)}][a=${alignmentFactor.toFixed(2)}]`;
-}
-
-function calculateSentimentStrength(
-  obs: TokenMarketObservation,
-  normalized: NormalizedMetrics,
-): number {
-  // Combine strength of various indicators
-  const priceStrength = Math.abs(obs.price_change_percentage_24h) / 20;
-  const mcapStrength = Math.abs(obs.market_cap_change_percentage_24h) / 20;
-  const volumeStrength = normalized.volume_to_mcap_ratio;
-
-  return Math.min(
-    1.0,
-    priceStrength * 0.4 + mcapStrength * 0.3 + volumeStrength * 0.3,
-  );
-}
-
-function categorizeSentiment(sentiment: number): string {
-  if (sentiment > 0.5) return 'very_bullish';
-  if (sentiment > 0.2) return 'bullish';
-  if (sentiment > -0.2) return 'neutral';
-  if (sentiment > -0.5) return 'bearish';
-  return 'very_bearish';
-}
-
 function generateMarketState(
   obs: TokenMarketObservation,
   normalized: NormalizedMetrics,
