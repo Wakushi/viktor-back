@@ -1,5 +1,10 @@
 import { Injectable } from '@nestjs/common';
 import { Address } from 'viem';
+import {
+  calculateBuyingConfidence,
+  calculateDecisionTypeStats,
+  calculateProfitabilityScore,
+} from './helpers/decision-computation';
 import { Decision } from './entities/decision.type';
 import { generateRequestId } from 'src/shared/utils/helpers';
 import { ContractService } from '../contract/contract.service';
@@ -7,11 +12,6 @@ import { TokenData } from 'src/modules/tokens/entities/token.type';
 import { TokensService } from '../tokens/tokens.service';
 import { EmbeddingService } from '../embedding/embedding.service';
 import { SupabaseService } from '../supabase/supabase.service';
-import {
-  calculateBuyingConfidence,
-  calculateDecisionTypeStats,
-  calculateProfitabilityScore,
-} from './helpers/decision-computation';
 import { TokenAnalysisResult } from './entities/analysis-result.type';
 
 @Injectable()
@@ -27,9 +27,11 @@ export class AgentService {
     try {
       const tokens: TokenData[] = await this.tokensService.discoverTokens();
 
-      return await this.analyzeTokens(tokens);
+      const analysis: TokenAnalysisResult[] = await this.analyzeTokens(tokens);
+
+      return analysis;
     } catch (error) {
-      console.error('Error in analyzeAndMakeDecision:', error);
+      console.error('Error while seeking market buying targets :', error);
       return [];
     }
   }
@@ -41,14 +43,14 @@ export class AgentService {
 
     const SIMILARITY_THRESHOLD = 0.7;
     const MATCH_COUNT = 12;
-    const MINIMUM_CONFIDENCE_TO_BUY = 0.75;
+    const MINIMUM_CONFIDENCE_TO_BUY = 0.7;
     const PROFITABLE_THRESHOLD = 0.65;
 
     const WEIGHTS = {
-      decisionTypeRatio: 0.35,
-      similarity: 0.25,
+      decisionTypeRatio: 0.3,
+      similarity: 0.35,
       profitability: 0.25,
-      confidence: 0.15,
+      confidence: 0.1,
     };
 
     for (const token of tokens) {
@@ -105,6 +107,8 @@ export class AgentService {
         console.error(`Error analyzing token ${token.metadata.symbol}:`, error);
       }
     }
+
+    console.log('analysisResults: ', analysisResults);
 
     return analysisResults
       .filter((result) => result.buyingConfidence >= MINIMUM_CONFIDENCE_TO_BUY)

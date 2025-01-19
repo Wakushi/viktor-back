@@ -76,7 +76,7 @@ export class AnalysisFormatter {
   private static formatSimilarScenarios(
     similarDecisions: Array<{
       marketCondition: TokenMarketObservation;
-      decision: any;
+      decision: TradingDecision;
       similarity: number;
       profitabilityScore: number;
     }>,
@@ -89,10 +89,15 @@ export class AnalysisFormatter {
       const similar = similarDecisions[i];
       const date = new Date(similar.marketCondition.timestamp);
       const profitStr = similar.profitabilityScore > 0 ? '+' : '';
+      const timeframe = this.getProfitTimeframe(similar.decision);
+      const status =
+        similar.decision.status !== 'COMPLETED'
+          ? ` [${similar.decision.status}]`
+          : '';
 
       output +=
         `${i + 1}. ${date.toLocaleDateString()} | Similarity: ${(similar.similarity * 100).toFixed(1)}% | ` +
-        `Decision: ${similar.decision.decision_type} | ${profitStr}${(similar.profitabilityScore * 100).toFixed(1)}% (${this.getProfitTimeframe(similar.decision)})\n` +
+        `Decision: ${similar.decision.decision_type} | ${profitStr}${(similar.profitabilityScore * 100).toFixed(1)}% (${timeframe})${status}\n` +
         `   Context: ${this.getMarketContext(similar.marketCondition)}\n`;
     }
 
@@ -147,15 +152,31 @@ export class AnalysisFormatter {
     return 'Very Low (<10 samples)';
   }
 
-  private static getProfitTimeframe(decision: any): string {
-    if (!decision.price_7d_after_usd || !decision.decision_timestamp) {
+  private static getProfitTimeframe(decision: TradingDecision): string {
+    if (!decision.decision_timestamp) {
       return 'Unknown duration';
     }
-    const days = Math.floor(
-      (decision.price_7d_after_usd - decision.decision_timestamp) /
-        (24 * 60 * 60 * 1000),
-    );
-    return `${days}d`;
+
+    // If we have 7d data, use that
+    if (decision.price_7d_after_usd) {
+      return '7d';
+    }
+
+    // If we have 24h data, use that
+    if (decision.price_24h_after_usd) {
+      return '24h';
+    }
+
+    // If status is still awaiting results
+    if (decision.status === 'AWAITING_24H_RESULT') {
+      return 'Pending 24h';
+    }
+
+    if (decision.status === 'AWAITING_7D_RESULT') {
+      return 'Pending 7d';
+    }
+
+    return 'Unknown duration';
   }
 
   private static getMarketContext(observation: TokenMarketObservation): string {
@@ -248,16 +269,37 @@ export class AnalysisFormatter {
   }
 
   private static determineMarketPhase(market: TokenMarketObservation): string {
-    const priceChange = market.price_change_percentage_24h;
     const volumeToMcap = market.total_volume / market.market_cap;
     const athDistance = Math.abs(market.ath_change_percentage);
     const atlDistance = Math.abs(market.atl_change_percentage);
 
-    if (athDistance < 10 && priceChange > 0) return 'Distribution (Near ATH)';
-    if (atlDistance < 10 && volumeToMcap > 0.15)
-      return 'Accumulation (Near ATL)';
-    if (Math.abs(priceChange) < 2 && volumeToMcap < 0.1) return 'Consolidation';
-    if (priceChange > 5 && volumeToMcap > 0.15) return 'Expansion';
+    // Clear accumulation signals
+    if (athDistance > 70 && atlDistance < 25 && volumeToMcap >= 0.15) {
+      return 'Accumulation';
+    }
+
+    // Distribution phase
+    if (athDistance < 10 && atlDistance > 300 && volumeToMcap > 0.25) {
+      return 'Distribution';
+    }
+
+    // Markup phase
+    if (market.price_change_percentage_24h > 4 && volumeToMcap > 0.15) {
+      return 'Markup';
+    }
+
+    // Markdown phase
+    if (market.price_change_percentage_24h < -5 && volumeToMcap > 0.2) {
+      return 'Markdown';
+    }
+
+    // Consolidation phase
+    if (
+      Math.abs(market.price_change_percentage_24h) < 2 &&
+      volumeToMcap < 0.15
+    ) {
+      return 'Consolidation';
+    }
 
     return 'Transition';
   }

@@ -1,5 +1,93 @@
 import { TokenData } from 'src/modules/tokens/entities/token.type';
 
+const testToken: TokenData = {
+  market: {
+    coin_gecko_id: 'test_token',
+    timestamp: Date.now(),
+    market_cap_rank: 90,
+    price_usd: 110,
+    high_24h: 112,
+    low_24h: 108,
+    ath: 400, // -72.5% from ATH
+    ath_change_percentage: -72.5,
+    atl: 90, // +22% from ATL
+    atl_change_percentage: 22,
+    market_cap: 110000000,
+    fully_diluted_valuation: 165000000,
+    circulating_supply: 1000000,
+    total_supply: 1500000,
+    total_volume: 22000000, // Volume/mcap ratio of 0.20
+    max_supply: 2000000,
+    supply_ratio: 0.66,
+    price_change_24h: 2,
+    price_change_percentage_24h: 1.85,
+    market_cap_change_24h: 2000000,
+    market_cap_change_percentage_24h: 1.85,
+  },
+  metadata: {
+    id: 'test_token',
+    symbol: 'TEST',
+    name: 'Test Token',
+    contract_addresses: null,
+    market_cap_rank: 90,
+    genesis_date: '2023-01-01',
+    categories: ['Cryptocurrency'],
+    links: {
+      website: ['https://example.com'],
+      twitter: null,
+      telegram: null,
+      github: [],
+    },
+    platforms: null,
+    last_updated: new Date().toISOString(),
+    created_at: '2023-01-01',
+  },
+};
+
+const oppositeToken = {
+  market: {
+    coin_gecko_id: 'opposite_test_token',
+    timestamp: Date.now(),
+    market_cap_rank: 15, // Much higher rank (vs #90)
+    price_usd: 380, // High price point
+    high_24h: 420,
+    low_24h: 370,
+    ath: 400, // Very close to ATH (-5%)
+    ath_change_percentage: -5,
+    atl: 90, // Very far from ATL (+322%)
+    atl_change_percentage: 322,
+    market_cap: 380000000, // Higher market cap
+    fully_diluted_valuation: 570000000,
+    circulating_supply: 1000000,
+    total_supply: 1500000,
+    total_volume: 152000000, // Extremely high volume/mcap ratio of 0.40 (vs 0.20)
+    max_supply: 2000000,
+    supply_ratio: 0.66,
+    price_change_24h: -40, // Strong negative movement (vs +1.85%)
+    price_change_percentage_24h: -9.52,
+    market_cap_change_24h: -40000000,
+    market_cap_change_percentage_24h: -9.52,
+  },
+  metadata: {
+    id: 'opposite_test_token',
+    symbol: 'OPPO',
+    name: 'Opposite Test Token',
+    contract_addresses: null,
+    market_cap_rank: 15,
+    genesis_date: '2023-01-01',
+    categories: ['Cryptocurrency'],
+    links: {
+      website: ['https://example.com'],
+      twitter: null,
+      telegram: null,
+      github: [],
+    },
+    platforms: null,
+    last_updated: new Date().toISOString(),
+    created_at: '2023-01-01',
+  },
+};
+
 const historicalMarketData: TokenData[] = [
   {
     // Classic Accumulation Phase
@@ -450,98 +538,10 @@ const additionalMarketData: TokenData[] = [
   },
 ];
 
-const oppositeToken = {
-  market: {
-    coin_gecko_id: 'opposite_test_token',
-    timestamp: Date.now(),
-    market_cap_rank: 15, // Much higher rank (vs #90)
-    price_usd: 380, // High price point
-    high_24h: 420,
-    low_24h: 370,
-    ath: 400, // Very close to ATH (-5%)
-    ath_change_percentage: -5,
-    atl: 90, // Very far from ATL (+322%)
-    atl_change_percentage: 322,
-    market_cap: 380000000, // Higher market cap
-    fully_diluted_valuation: 570000000,
-    circulating_supply: 1000000,
-    total_supply: 1500000,
-    total_volume: 152000000, // Extremely high volume/mcap ratio of 0.40 (vs 0.20)
-    max_supply: 2000000,
-    supply_ratio: 0.66,
-    price_change_24h: -40, // Strong negative movement (vs +1.85%)
-    price_change_percentage_24h: -9.52,
-    market_cap_change_24h: -40000000,
-    market_cap_change_percentage_24h: -9.52,
-  },
-  metadata: {
-    id: 'opposite_test_token',
-    symbol: 'OPPO',
-    name: 'Opposite Test Token',
-    contract_addresses: null,
-    market_cap_rank: 15,
-    genesis_date: '2023-01-01',
-    categories: ['Cryptocurrency'],
-    links: {
-      website: ['https://example.com'],
-      twitter: null,
-      telegram: null,
-      github: [],
-    },
-    platforms: null,
-    last_updated: new Date().toISOString(),
-    created_at: '2023-01-01',
-  },
-};
-
 const MOCK_MARKET_DATA = [
   ...historicalMarketData,
   ...additionalMarketData,
   oppositeToken,
 ];
-
-const testToken: TokenData = {
-  market: {
-    coin_gecko_id: 'test_token',
-    timestamp: Date.now(),
-    market_cap_rank: 90,
-    price_usd: 110,
-    high_24h: 112,
-    low_24h: 108,
-    ath: 400, // -72.5% from ATH
-    ath_change_percentage: -72.5,
-    atl: 90, // +22% from ATL
-    atl_change_percentage: 22,
-    market_cap: 110000000,
-    fully_diluted_valuation: 165000000,
-    circulating_supply: 1000000,
-    total_supply: 1500000,
-    total_volume: 22000000, // Volume/mcap ratio of 0.20
-    max_supply: 2000000,
-    supply_ratio: 0.66,
-    price_change_24h: 2,
-    price_change_percentage_24h: 1.85,
-    market_cap_change_24h: 2000000,
-    market_cap_change_percentage_24h: 1.85,
-  },
-  metadata: {
-    id: 'test_token',
-    symbol: 'TEST',
-    name: 'Test Token',
-    contract_addresses: null,
-    market_cap_rank: 90,
-    genesis_date: '2023-01-01',
-    categories: ['Cryptocurrency'],
-    links: {
-      website: ['https://example.com'],
-      twitter: null,
-      telegram: null,
-      github: [],
-    },
-    platforms: null,
-    last_updated: new Date().toISOString(),
-    created_at: '2023-01-01',
-  },
-};
 
 export { MOCK_MARKET_DATA, testToken };

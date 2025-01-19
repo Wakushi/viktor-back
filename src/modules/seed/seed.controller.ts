@@ -13,9 +13,9 @@ export class SeedController {
 
   @Post('test')
   async hardcodedTestAnalysis() {
-    const MOCK_DATA = testToken;
+    const MOCK_TEST_TOKEN = testToken;
 
-    return await this.seedService.testAgentAnalysis(MOCK_DATA);
+    return await this.seedService.testAgentAnalysis(MOCK_TEST_TOKEN);
   }
 
   @Post('wipe')

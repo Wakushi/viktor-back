@@ -2,21 +2,20 @@ import { TokenMarketObservation } from 'src/modules/tokens/entities/token.type';
 import { normalizeInRange, normalizePercentage } from './numerical-helpers';
 
 interface NormalizedMetrics {
-  // Price metrics
-  price_strength: number; // Based on position between ATH and ATL
-  price_momentum: number; // Based on 24h change
+  // Existing metrics
+  price_strength: number;
+  price_momentum: number;
+  volume_to_mcap_ratio: number;
+  price_volume_trend: number;
+  supply_distribution: number;
+  market_maturity: number;
+  market_dominance: number;
+  market_momentum: number;
 
-  // Volume metrics
-  volume_to_mcap_ratio: number; // Volume relative to market cap
-  price_volume_trend: number; // Combines price and volume changes
-
-  // Supply metrics
-  supply_distribution: number; // Based on circulating vs total supply
-  market_maturity: number; // Based on ATH/ATL changes
-
-  // Market metrics
-  market_dominance: number; // Based on market cap rank
-  market_momentum: number; // Based on market cap changes
+  // New 24h-specific metrics
+  price_velocity_24h: number; // Rate of price change within 24h
+  volume_intensity_24h: number; // Volume distribution over 24h range
+  price_range_usage_24h: number; // How much of the 24h range is being used
 }
 
 interface MarketNarratives {
@@ -85,6 +84,18 @@ function calculateNormalizedMetrics(
     observation.market_cap_change_percentage_24h,
   );
 
+  const price_velocity_24h =
+    observation.price_change_24h / (observation.high_24h - observation.low_24h);
+
+  const volume_intensity_24h =
+    observation.total_volume /
+    (observation.market_cap *
+      Math.abs(observation.price_change_percentage_24h / 100));
+
+  const price_range_usage_24h =
+    (observation.price_usd - observation.low_24h) /
+    (observation.high_24h - observation.low_24h);
+
   return {
     price_strength,
     price_momentum,
@@ -94,6 +105,9 @@ function calculateNormalizedMetrics(
     market_maturity,
     market_dominance,
     market_momentum,
+    price_velocity_24h,
+    volume_intensity_24h,
+    price_range_usage_24h,
   };
 }
 
@@ -111,37 +125,39 @@ function generateMarketNarratives(
 }
 
 function generatePriceNarratives(obs: TokenMarketObservation): string[] {
-  const change = obs.price_change_percentage_24h;
   const narratives: string[] = [];
+  const change = obs.price_change_percentage_24h;
+  const range = ((obs.high_24h - obs.low_24h) / obs.low_24h) * 100;
+  const currentRangePosition =
+    ((obs.price_usd - obs.low_24h) / (obs.high_24h - obs.low_24h)) * 100;
 
+  // Primary 24h movement narrative
   if (change <= -5) {
     narratives.push(
-      `Sharp ${Math.abs(change).toFixed(1)}% price decline signals aggressive selling`,
+      `24h decline of ${Math.abs(change).toFixed(1)}% with ${range.toFixed(1)}% range, currently at ${currentRangePosition.toFixed(1)}% of range`,
     );
-    if (change <= -10) {
-      narratives.push(
-        `Severe market pressure driving ${Math.abs(change).toFixed(1)}% drop`,
-      );
-    }
-  } else if (change <= -2) {
+  } else if (change >= 5) {
     narratives.push(
-      `Price declining ${Math.abs(change).toFixed(1)}% under moderate selling`,
+      `24h advance of ${change.toFixed(1)}% with ${range.toFixed(1)}% range, currently at ${currentRangePosition.toFixed(1)}% of range`,
     );
-  } else if (change < 0) {
-    narratives.push(`Minor price weakness of ${Math.abs(change).toFixed(1)}%`);
-  } else if (change < 2) {
-    narratives.push(`Stable price action with ${change.toFixed(1)}% movement`);
-  } else if (change < 5) {
-    narratives.push(`Price strengthening with ${change.toFixed(1)}% gain`);
-  } else {
+  }
+
+  // Volume context within 24h
+  const volumeIntensity =
+    obs.total_volume /
+    (obs.market_cap * Math.abs(obs.price_change_percentage_24h / 100));
+
+  if (volumeIntensity > 2) {
     narratives.push(
-      `Strong ${change.toFixed(1)}% price advance shows buyer control`,
+      `High volume relative to price movement suggesting strong 24h accumulation/distribution`,
     );
-    if (change >= 10) {
-      narratives.push(
-        `Powerful ${change.toFixed(1)}% rally indicates strong momentum`,
-      );
-    }
+  }
+
+  // Range context
+  if (range > 10) {
+    narratives.push(
+      `Wide 24h trading range of ${range.toFixed(1)}% indicating high volatility opportunity`,
+    );
   }
 
   return narratives;
@@ -526,10 +542,15 @@ function generatePriceSignal(
   alignmentFactor: number,
 ): string {
   const change = obs.price_change_percentage_24h;
+  const range = ((obs.high_24h - obs.low_24h) / obs.low_24h) * 100;
+  const rangePosition =
+    ((obs.price_usd - obs.low_24h) / (obs.high_24h - obs.low_24h)) * 100;
+
   const category = categorizePriceMovement(change);
   const strength = Math.min(1.0, Math.abs(change) / 10);
+  const rangeStrength = Math.min(1.0, range / 20);
 
-  return `price=${category}(${change.toFixed(1)})[w=${weight.toFixed(2)}][s=${strength.toFixed(2)}][a=${alignmentFactor.toFixed(2)}]`;
+  return `price=${category}(${change.toFixed(1)})[w=${weight.toFixed(2)}][s=${strength.toFixed(2)}][r=${rangeStrength.toFixed(2)}][p=${rangePosition.toFixed(2)}][a=${alignmentFactor.toFixed(2)}]`;
 }
 
 function categorizePriceMovement(change: number): string {
@@ -770,64 +791,38 @@ function detectMarketPhase(
   observation: TokenMarketObservation,
 ): string {
   const phaseScores = {
-    consolidation: 0,
     accumulation: 0,
-    expansion: 0,
+    markup: 0,
     distribution: 0,
+    markdown: 0,
   };
 
-  // Volume Dynamics (using volume_to_mcap_ratio)
-  if (normalized.volume_to_mcap_ratio > 0.15) {
-    phaseScores.expansion += 2;
-    phaseScores.distribution += 1;
-  } else if (normalized.volume_to_mcap_ratio < 0.05) {
-    phaseScores.consolidation += 2;
+  // Price position in 24h range
+  const rangePosition = normalized.price_range_usage_24h;
+  if (rangePosition > 0.8) {
+    phaseScores.distribution += 2;
+  } else if (rangePosition < 0.2) {
+    phaseScores.accumulation += 2;
   }
 
-  // Price Momentum and Strength
-  if (observation.price_change_percentage_24h > 5) {
-    phaseScores.expansion += 2;
-    if (normalized.price_strength > 0.7) {
-      phaseScores.distribution += 2; // Near ATH with strong momentum = distribution
+  // Volume intensity relative to movement
+  if (normalized.volume_intensity_24h > 2) {
+    if (observation.price_change_percentage_24h > 0) {
+      phaseScores.markup += 2;
     } else {
-      phaseScores.accumulation += 1;
+      phaseScores.markdown += 2;
     }
-  } else if (observation.price_change_percentage_24h < -2) {
-    if (normalized.price_strength < 0.3) {
-      phaseScores.accumulation += 2; // Near ATL with negative momentum = accumulation
-    } else {
-      phaseScores.distribution += 2;
-    }
-    phaseScores.consolidation += 1;
   }
 
-  // Market Momentum (using market cap changes)
-  if (Math.abs(observation.market_cap_change_percentage_24h) < 2) {
-    phaseScores.consolidation += 2;
-  } else if (observation.market_cap_change_percentage_24h > 5) {
-    phaseScores.expansion += 1;
-  }
-
-  // Volume and Price Alignment
-  if (normalized.price_volume_trend > 0.5) {
-    phaseScores.expansion += 1;
-  } else if (normalized.price_volume_trend < -0.5) {
-    phaseScores.distribution += 1;
-  }
-
-  // Supply Distribution
-  if (normalized.supply_distribution > 0.7) {
-    phaseScores.distribution += 1;
-  } else if (normalized.supply_distribution < 0.3) {
-    phaseScores.accumulation += 1;
+  // Price velocity
+  if (normalized.price_velocity_24h > 0.7) {
+    phaseScores.markup += 1;
+  } else if (normalized.price_velocity_24h < -0.7) {
+    phaseScores.markdown += 1;
   }
 
   // Find the phase with highest score
-  const topPhase = Object.entries(phaseScores).reduce((a, b) =>
-    b[1] > a[1] ? b : a,
-  )[0];
-
-  return topPhase;
+  return Object.entries(phaseScores).reduce((a, b) => (b[1] > a[1] ? b : a))[0];
 }
 
 export {
