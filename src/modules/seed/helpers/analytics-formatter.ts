@@ -157,11 +157,6 @@ export class AnalysisFormatter {
       return 'Unknown duration';
     }
 
-    // If we have 7d data, use that
-    if (decision.price_7d_after_usd) {
-      return '7d';
-    }
-
     // If we have 24h data, use that
     if (decision.price_24h_after_usd) {
       return '24h';
@@ -170,10 +165,6 @@ export class AnalysisFormatter {
     // If status is still awaiting results
     if (decision.status === 'AWAITING_24H_RESULT') {
       return 'Pending 24h';
-    }
-
-    if (decision.status === 'AWAITING_7D_RESULT') {
-      return 'Pending 7d';
     }
 
     return 'Unknown duration';

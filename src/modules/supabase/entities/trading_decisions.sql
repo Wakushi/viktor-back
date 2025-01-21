@@ -21,7 +21,6 @@ CREATE TABLE trading_decisions (
             'PENDING_EXECUTION',
             'EXECUTION_FAILED',
             'AWAITING_24H_RESULT',
-            'AWAITING_7D_RESULT',
             'COMPLETED'
         )
     ) DEFAULT 'PENDING_EXECUTION',
@@ -34,9 +33,7 @@ CREATE TABLE trading_decisions (
     
     -- Forward-looking performance metrics
     price_24h_after_usd NUMERIC,
-    price_7d_after_usd NUMERIC,
     price_change_24h_pct NUMERIC,
-    price_change_7d_pct NUMERIC,
     
     -- Metadata
     created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
@@ -48,9 +45,8 @@ CREATE TABLE trading_decisions (
         decision_type != 'SELL'
     ),
     CONSTRAINT valid_price_changes CHECK (
-        (status IN ('AWAITING_7D_RESULT', 'COMPLETED') AND price_24h_after_usd IS NOT NULL AND price_change_24h_pct IS NOT NULL) OR
-        (status = 'COMPLETED' AND price_7d_after_usd IS NOT NULL AND price_change_7d_pct IS NOT NULL) OR
-        status NOT IN ('AWAITING_7D_RESULT', 'COMPLETED')
+        (status = 'COMPLETED' AND price_24h_after_usd IS NOT NULL AND price_change_24h_pct IS NOT NULL) OR
+        status NOT IN ('COMPLETED')
     )
 );
 

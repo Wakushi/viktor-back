@@ -60,9 +60,7 @@ function generateMockTradingDecision({
     execution_price_usd: executionPrice,
     gas_cost_eth: 0.005 + Math.random() * 0.003, // Random gas cost between 0.005-0.008 ETH
     price_24h_after_usd: priceChanges.price_24h,
-    price_7d_after_usd: priceChanges.price_7d,
     price_change_24h_pct: priceChanges.change_24h_pct,
-    price_change_7d_pct: priceChanges.change_7d_pct,
     created_at: new Date(baseTimestamp),
     updated_at: new Date(baseTimestamp + 8 * 24 * 60 * 60 * 1000),
   };
@@ -130,9 +128,7 @@ function simulatePriceChanges(
   decisionType: 'BUY' | 'SELL',
 ): {
   price_24h: number;
-  price_7d: number;
   change_24h_pct: number;
-  change_7d_pct: number;
 } {
   // Base volatility on market conditions
   const volatility = Math.abs(marketObs.price_change_percentage_24h) / 100;
@@ -142,51 +138,40 @@ function simulatePriceChanges(
   const nearATL = Math.abs(marketObs.atl_change_percentage) < 20;
 
   let expectedReturn24h = 0;
-  let expectedReturn7d = 0;
 
   if (decisionType === 'BUY') {
     if (nearATL) {
       // Higher probability of positive returns near ATL
       expectedReturn24h = 0.05 + volatility * 2;
-      expectedReturn7d = 0.12 + volatility * 3;
     } else if (nearATH) {
       // Higher probability of negative returns near ATH
       expectedReturn24h = -0.03 - volatility * 2;
-      expectedReturn7d = -0.08 - volatility * 3;
     } else {
       // Moderate returns in normal conditions
       expectedReturn24h = 0.02 + volatility;
-      expectedReturn7d = 0.05 + volatility * 2;
     }
   } else {
     // SELL
     if (nearATH) {
       // Good timing for sells near ATH
       expectedReturn24h = -0.05 - volatility * 2;
-      expectedReturn7d = -0.12 - volatility * 3;
     } else if (nearATL) {
       // Poor timing for sells near ATL
       expectedReturn24h = 0.03 + volatility * 2;
-      expectedReturn7d = 0.08 + volatility * 3;
     } else {
       // Moderate returns in normal conditions
       expectedReturn24h = -0.02 - volatility;
-      expectedReturn7d = -0.05 - volatility * 2;
     }
   }
 
   // Add random noise to expected returns
   const noise24h = (Math.random() - 0.5) * volatility * 2;
-  const noise7d = (Math.random() - 0.5) * volatility * 3;
 
   const change24h = expectedReturn24h + noise24h;
-  const change7d = expectedReturn7d + noise7d;
 
   return {
     price_24h: marketObs.price_usd * (1 + change24h),
-    price_7d: marketObs.price_usd * (1 + change7d),
     change_24h_pct: change24h * 100,
-    change_7d_pct: change7d * 100,
   };
 }
 
