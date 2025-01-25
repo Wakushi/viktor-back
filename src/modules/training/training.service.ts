@@ -6,18 +6,31 @@ import {
 } from './entities/coincodex.type';
 import { SupplyMetrics } from './entities/supply.type';
 import { TokenMarketObservation } from '../tokens/entities/token.type';
+import { TradingDecision } from '../agent/entities/trading-decision.type';
+import { MarketObservationEmbedding } from '../embedding/entities/embedding.type';
+import { zeroAddress } from 'viem';
+import { EmbeddingService } from '../embedding/embedding.service';
+import { SupabaseService } from '../supabase/supabase.service';
 
 @Injectable()
 export class TrainingService {
-  constructor(private readonly csvService: CsvService) {}
+  constructor(
+    private readonly csvService: CsvService,
+    private readonly embeddingService: EmbeddingService,
+    private readonly supabaseService: SupabaseService,
+  ) {}
 
-  public async processHistoricalData(
-    tokenSymbol: string,
-  ): Promise<TokenMarketObservation[]> {
+  public async saveHistoricalTokenMetrics(tokenSymbol: string): Promise<{
+    tokenMarketObservations: TokenMarketObservation[];
+    tradingDecisions: Omit<TradingDecision, 'id'>[];
+  }> {
     try {
       const staticSupplyMetrics = await this.fetchSupplyMetrics(tokenSymbol);
-
       const dailyMetrics = await this.fetchDailyMetrics(tokenSymbol);
+
+      dailyMetrics.sort(
+        (a, b) => new Date(a.Start).getTime() - new Date(b.Start).getTime(),
+      );
 
       const tokenMarketObservations = this.buildObservationsFromMetrics({
         tokenSymbol,
@@ -25,10 +38,115 @@ export class TrainingService {
         staticSupplyMetrics,
       });
 
-      return tokenMarketObservations;
+      tokenMarketObservations.splice(0, 1);
+
+      const marketObservationEmbeddings =
+        await this.generateMarketObservationEmbeddings(tokenMarketObservations);
+
+      const insertedObservations = await this.insertMarketObservationEmbeddings(
+        marketObservationEmbeddings,
+      );
+
+      const tradingDecisions =
+        this.createTradingDecisions(insertedObservations);
+
+      await this.insertTradingDecisions(tradingDecisions);
+
+      return { tokenMarketObservations, tradingDecisions };
     } catch (error) {
       console.error('Error processing historical data:', error);
       throw error;
+    }
+  }
+
+  private async generateMarketObservationEmbeddings(
+    tokenMarketObservations: TokenMarketObservation[],
+  ): Promise<Omit<MarketObservationEmbedding, 'id'>[]> {
+    const marketObservationEmbeddings: Omit<
+      MarketObservationEmbedding,
+      'id'
+    >[] = [];
+
+    for (const tokenMarketObs of tokenMarketObservations) {
+      const marketObservationEmbedding =
+        await this.generateMarketObservationWithEmbedding(tokenMarketObs);
+      marketObservationEmbeddings.push(marketObservationEmbedding);
+    }
+
+    return marketObservationEmbeddings;
+  }
+
+  private async insertMarketObservationEmbeddings(
+    marketObservationEmbeddings: Omit<MarketObservationEmbedding, 'id'>[],
+  ): Promise<MarketObservationEmbedding[]> {
+    const insertedObservations: MarketObservationEmbedding[] = [];
+
+    for (const observation of marketObservationEmbeddings) {
+      const inserted =
+        await this.supabaseService.insertMarketObservationEmbedding(
+          observation,
+        );
+      insertedObservations.push(inserted);
+    }
+
+    return insertedObservations;
+  }
+
+  private createTradingDecisions(
+    insertedObservations: MarketObservationEmbedding[],
+  ): Omit<TradingDecision, 'id'>[] {
+    const tradingDecisions: Omit<TradingDecision, 'id'>[] = insertedObservations
+      .slice(0, -1)
+      .map((marketObservation, i) => {
+        const { id, price_usd } = marketObservation;
+        const nextDayObs = insertedObservations[i + 1];
+
+        return this.createSingleTradingDecision(id, price_usd, nextDayObs);
+      });
+
+    return tradingDecisions;
+  }
+
+  private createSingleTradingDecision(
+    observationId: string,
+    currentPrice: number,
+    nextDayObs?: MarketObservationEmbedding,
+  ): Omit<TradingDecision, 'id'> {
+    const price24hAfter = nextDayObs?.price_usd;
+    const price24hAfterPct = nextDayObs
+      ? ((nextDayObs.price_usd - currentPrice) / currentPrice) * 100
+      : undefined;
+
+    return {
+      observation_id: observationId,
+      wallet_address: zeroAddress,
+      token_address: zeroAddress,
+
+      decision_type: this.generateDecisionType(),
+      decision_timestamp: Date.now(),
+      decision_price_usd: currentPrice,
+
+      status: 'COMPLETED',
+      execution_successful: true,
+      execution_price_usd: currentPrice,
+
+      price_24h_after_usd: price24hAfter,
+      price_change_24h_pct: price24hAfterPct,
+
+      created_at: new Date(),
+      updated_at: new Date(),
+    };
+  }
+
+  private generateDecisionType(): 'BUY' | 'SELL' {
+    return 'BUY';
+  }
+
+  private async insertTradingDecisions(
+    tradingDecisions: Omit<TradingDecision, 'id'>[],
+  ): Promise<void> {
+    for (const tradingDecision of tradingDecisions) {
+      await this.supabaseService.insertTradingDecision(tradingDecision);
     }
   }
 
@@ -164,5 +282,23 @@ export class TrainingService {
         supply_ratio: staticSupplyMetrics.supply_ratio,
       };
     });
+  }
+
+  private async generateMarketObservationWithEmbedding(
+    observation: TokenMarketObservation,
+  ): Promise<Omit<MarketObservationEmbedding, 'id'>> {
+    const embeddingText =
+      this.embeddingService.getEmbeddingTextFromObservation(observation);
+
+    const embeddings = await this.embeddingService.createEmbeddings([
+      embeddingText,
+    ]);
+
+    const marketObservationEmbedding: Omit<MarketObservationEmbedding, 'id'> = {
+      ...observation,
+      embedding: embeddings[0].embedding,
+    };
+
+    return marketObservationEmbedding;
   }
 }

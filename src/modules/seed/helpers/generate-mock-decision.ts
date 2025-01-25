@@ -24,8 +24,10 @@ function generateMockTradingDecision({
     .sort((a, b) => b.decision_timestamp - a.decision_timestamp)[0];
 
   // Analyze market conditions to make appropriate decision
-  const { decision_type, confidence_score } =
-    determineDecisionFromMarketConditions(marketObs, lastBuyDecision);
+  const { decision_type } = determineDecisionFromMarketConditions(
+    marketObs,
+    lastBuyDecision,
+  );
 
   // Set base timestamp slightly after market observation
   const baseTimestamp = marketObs.timestamp + 300000; // 5 minutes after observation
@@ -47,7 +49,6 @@ function generateMockTradingDecision({
     decision_type,
     decision_timestamp: baseTimestamp,
     decision_price_usd: marketObs.price_usd,
-    confidence_score,
     previous_buy_id: undefined, // Will be populated after DB insertion
     previous_buy_price_usd:
       decision_type === 'SELL'

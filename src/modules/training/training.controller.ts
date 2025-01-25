@@ -7,6 +7,6 @@ export class TrainingController {
 
   @Post()
   async trainAgent() {
-    return this.trainingService.processHistoricalData('link');
+    return this.trainingService.saveHistoricalTokenMetrics('link');
   }
 }

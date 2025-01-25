@@ -1,4 +1,4 @@
-interface TradingDecision {
+export type TradingDecision = {
   id: string;
   observation_id: string;
   wallet_address: string;
@@ -7,7 +7,6 @@ interface TradingDecision {
   decision_type: 'BUY' | 'SELL';
   decision_timestamp: number;
   decision_price_usd: number;
-  confidence_score: number;
 
   previous_buy_id?: string;
   previous_buy_price_usd?: number;
@@ -17,15 +16,13 @@ interface TradingDecision {
     | 'EXECUTION_FAILED'
     | 'AWAITING_24H_RESULT'
     | 'COMPLETED';
-  next_update_due: number;
 
   execution_successful: boolean;
   execution_price_usd: number;
-  gas_cost_eth: number;
 
   price_24h_after_usd?: number;
   price_change_24h_pct?: number;
 
   created_at: Date;
   updated_at: Date;
-}
+};

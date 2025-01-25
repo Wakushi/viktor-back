@@ -7,6 +7,7 @@ import {
   TokenMarketObservationMatchResult,
 } from './entities/collections.type';
 import { TokenMetadata } from '../tokens/entities/token.type';
+import { TradingDecision } from '../agent/entities/trading-decision.type';
 
 @Injectable()
 export class SupabaseService {

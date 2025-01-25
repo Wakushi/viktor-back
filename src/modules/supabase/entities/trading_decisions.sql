@@ -9,7 +9,6 @@ CREATE TABLE trading_decisions (
     decision_type TEXT NOT NULL CHECK (decision_type IN ('BUY', 'SELL')),
     decision_timestamp BIGINT NOT NULL,
     decision_price_usd NUMERIC NOT NULL,
-    confidence_score NUMERIC CHECK (confidence_score >= 0 AND confidence_score <= 1),
     
     -- Previous BUY reference
     previous_buy_id BIGINT REFERENCES trading_decisions(id),
@@ -24,12 +23,10 @@ CREATE TABLE trading_decisions (
             'COMPLETED'
         )
     ) DEFAULT 'PENDING_EXECUTION',
-    next_update_due BIGINT NOT NULL,
     
     -- Execution details
     execution_successful BOOLEAN DEFAULT false,
     execution_price_usd NUMERIC,
-    gas_cost_eth NUMERIC,
     
     -- Forward-looking performance metrics
     price_24h_after_usd NUMERIC,
@@ -55,7 +52,6 @@ CREATE INDEX idx_trading_decisions_observation ON trading_decisions(observation_
 CREATE INDEX idx_trading_decisions_wallet ON trading_decisions(wallet_address);
 CREATE INDEX idx_trading_decisions_token ON trading_decisions(token_address);
 CREATE INDEX idx_trading_decisions_status ON trading_decisions(status);
-CREATE INDEX idx_trading_decisions_next_update ON trading_decisions(next_update_due);
 CREATE INDEX idx_trading_decisions_decision ON trading_decisions(token_address, decision_type, decision_timestamp DESC);
 
 -- Helper function to find last BUY price for a token

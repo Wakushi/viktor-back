@@ -209,12 +209,6 @@ function calculateBuyingConfidence(
     decisions,
   );
 
-  const confidenceScore = calculateWeightedScore(
-    decisions.map((d) => d.decision.confidence_score),
-    decisions.map((d) => d.similarity),
-    decisions,
-  );
-
   const volatilityAdjustment =
     decisions.reduce(
       (acc, d) => acc + calculateVolatilityScore(d.marketCondition, d.decision),
@@ -224,8 +218,7 @@ function calculateBuyingConfidence(
   const baseScore =
     decisionTypeScore * weights.decisionTypeRatio +
     similarityScore * weights.similarity +
-    profitabilityScore * weights.profitability +
-    confidenceScore * weights.confidence;
+    profitabilityScore * weights.profitability;
 
   return baseScore * (0.85 + 0.15 * volatilityAdjustment);
 }
