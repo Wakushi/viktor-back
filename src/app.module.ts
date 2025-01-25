@@ -11,6 +11,7 @@ import { EmbeddingModule } from './modules/embedding/embedding.module';
 import { UniswapV3Module } from './modules/uniswap-v3/uniswap-v3.module';
 import { TokensModule } from './modules/tokens/tokens.module';
 import { SeedModule } from './modules/seed/seed.module';
+import { TrainingModule } from './modules/training/training.module';
 
 @Module({
   imports: [
@@ -54,6 +55,7 @@ import { SeedModule } from './modules/seed/seed.module';
     AgentModule.forRoot(),
     TokensModule.forRoot(),
     SeedModule,
+    TrainingModule,
   ],
 })
 export class AppModule {

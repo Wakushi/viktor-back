@@ -108,8 +108,6 @@ export class AgentService {
       }
     }
 
-    console.log('analysisResults: ', analysisResults);
-
     return analysisResults
       .filter((result) => result.buyingConfidence >= MINIMUM_CONFIDENCE_TO_BUY)
       .sort((a, b) => b.buyingConfidence - a.buyingConfidence);

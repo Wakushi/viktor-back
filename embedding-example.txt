@@ -1,0 +1,7 @@
+High volume relative to price movement suggesting strong 24h accumulation/distribution. 
+Strong trading activity with healthy volume relative to market cap. 
+Neutral market conditions with strong market participation. 
+Above average market participation. 
+Trading conditions show low volatility risk and low liquidity risk. 
+Market structure indicates markup phase. 
+[SIGNALS] price=neutral(1.9)[w=0.36][s=0.18][r=0.19][p=50.00][a=0.57] volume=high(20.0%)[w=0.39][s=1.00][i=0.07][a=0.57] mcap=stable(1.9)[w=0.24][s=0.09][i=0.01][a=0.57] trend=sideways[s=0.28][c=0.43] phase=markup risk=low[s=0.26]

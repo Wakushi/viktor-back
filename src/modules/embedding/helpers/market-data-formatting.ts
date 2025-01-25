@@ -9,7 +9,6 @@ interface NormalizedMetrics {
   price_volume_trend: number;
   supply_distribution: number;
   market_maturity: number;
-  market_dominance: number;
   market_momentum: number;
 
   // New 24h-specific metrics
@@ -72,13 +71,6 @@ function calculateNormalizedMetrics(
       Math.abs(observation.atl_change_percentage)) /
     200; // Normalize to 0-1
 
-  // Market dominance based on rank (inverse and normalized)
-  const market_dominance = normalizeInRange(
-    1 / Math.max(1, observation.market_cap_rank),
-    0,
-    1,
-  );
-
   // Market momentum from market cap changes
   const market_momentum = normalizePercentage(
     observation.market_cap_change_percentage_24h,
@@ -103,7 +95,6 @@ function calculateNormalizedMetrics(
     price_volume_trend,
     supply_distribution,
     market_maturity,
-    market_dominance,
     market_momentum,
     price_velocity_24h,
     volume_intensity_24h,
@@ -440,9 +431,8 @@ function generateMarketCapSignal(
   const mcapChange = obs.market_cap_change_percentage_24h;
   const category = categorizeMarketCapMovement(mcapChange);
   const strength = Math.min(1.0, Math.abs(mcapChange) / 20);
-  const impact = normalized.market_dominance;
 
-  return `mcap=${category}(${mcapChange.toFixed(1)})[w=${weight.toFixed(2)}][s=${strength.toFixed(2)}][i=${impact.toFixed(2)}][a=${alignmentFactor.toFixed(2)}]`;
+  return `mcap=${category}(${mcapChange.toFixed(1)})[w=${weight.toFixed(2)}][s=${strength.toFixed(2)}][a=${alignmentFactor.toFixed(2)}]`;
 }
 
 function categorizeMarketCapMovement(change: number): string {
