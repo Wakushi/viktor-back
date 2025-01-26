@@ -1,3 +1,4 @@
+import { TradingDecision } from 'src/modules/agent/entities/trading-decision.type';
 import { MarketObservationEmbedding } from 'src/modules/embedding/entities/embedding.type';
 
 interface GenerateDecisionOptions {
@@ -56,10 +57,8 @@ function generateMockTradingDecision({
         : undefined,
 
     status: 'COMPLETED',
-    next_update_due: baseTimestamp + 8 * 24 * 60 * 60 * 1000, // 8 days after decision
     execution_successful: true,
     execution_price_usd: executionPrice,
-    gas_cost_eth: 0.005 + Math.random() * 0.003, // Random gas cost between 0.005-0.008 ETH
     price_24h_after_usd: priceChanges.price_24h,
     price_change_24h_pct: priceChanges.change_24h_pct,
     created_at: new Date(baseTimestamp),

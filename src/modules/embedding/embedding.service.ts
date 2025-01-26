@@ -32,6 +32,31 @@ export class EmbeddingService {
     };
   }
 
+  public async generateMarketObservationEmbeddings(
+    tokenMarketObservations: TokenMarketObservation[],
+  ): Promise<Omit<MarketObservationEmbedding, 'id'>[]> {
+    const observationsText: string[] = tokenMarketObservations.map((obs) =>
+      this.getEmbeddingTextFromObservation(obs),
+    );
+
+    const observationsEmbeddings =
+      await this.createEmbeddings(observationsText);
+
+    const marketObservationEmbeddings: Omit<
+      MarketObservationEmbedding,
+      'id'
+    >[] = [];
+
+    observationsEmbeddings.forEach((observationEmbedding, i) => {
+      marketObservationEmbeddings.push({
+        ...tokenMarketObservations[i],
+        embedding: observationEmbedding.embedding,
+      });
+    });
+
+    return marketObservationEmbeddings;
+  }
+
   public async createSaveEmbedding(
     marketObservation: TokenMarketObservation,
   ): Promise<Omit<MarketObservationEmbedding, 'id'> | null> {
@@ -64,44 +89,59 @@ export class EmbeddingService {
     try {
       this.verifyEmbeddingPayload(documents);
 
-      const MODEL = this.voyageClient.model || 'voyage-3';
+      const MAX_BATCH_SIZE = 128;
+      const batches: string[][] = [];
 
-      const requestBody = {
-        input: documents,
-        model: MODEL,
-        input_type: 'document',
-        truncation: true,
-      };
-
-      const response = await fetch(`${this.voyageClient.baseUrl}/embeddings`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${this.voyageClient.apiKey}`,
-        },
-        body: JSON.stringify(requestBody),
-      });
-
-      if (!response.ok) {
-        const errorData = await response.json().catch(() => null);
-
-        throw new VoyageAPIError(
-          `Voyage API error: ${response.status} ${response.statusText}`,
-          errorData,
-        );
+      while (documents.length) {
+        const batch = documents.splice(0, MAX_BATCH_SIZE);
+        batches.push(batch);
       }
 
-      const voyageResponse: VoyageEmbeddingResponse = await response.json();
-
-      if (!voyageResponse?.data || !Array.isArray(voyageResponse.data)) {
-        throw new Error('Invalid response format from Voyage API');
-      }
+      const embeddingResults: VoyageEmbeddingData[] = [];
 
       console.log(
-        `[EMBEDDING SERVICE] Generated embeddings for ${documents.length} documents.`,
+        `Embedding documents, processing ${batches.length} batches..`,
       );
 
-      return voyageResponse.data;
+      for (const batch of batches) {
+        const requestBody = {
+          input: batch,
+          model: this.voyageClient.model || 'voyage-3',
+          input_type: 'document',
+          truncation: true,
+        };
+
+        const response = await fetch(
+          `${this.voyageClient.baseUrl}/embeddings`,
+          {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              Authorization: `Bearer ${this.voyageClient.apiKey}`,
+            },
+            body: JSON.stringify(requestBody),
+          },
+        );
+
+        if (!response.ok) {
+          const errorData = await response.json().catch(() => null);
+
+          throw new VoyageAPIError(
+            `Voyage API error: ${response.status} ${response.statusText}`,
+            errorData,
+          );
+        }
+
+        const voyageResponse: VoyageEmbeddingResponse = await response.json();
+
+        if (!voyageResponse?.data || !Array.isArray(voyageResponse.data)) {
+          throw new Error('Invalid response format from Voyage API');
+        }
+
+        embeddingResults.push(...voyageResponse.data);
+      }
+
+      return embeddingResults;
     } catch (error) {
       this.handleCreateEmbeddingError(error);
     }
@@ -175,10 +215,6 @@ export class EmbeddingService {
 
     if (documents.length === 0) {
       throw new Error('Texts array cannot be empty');
-    }
-
-    if (documents.length > 128) {
-      throw new Error('Maximum number of documents exceeded (limit: 128)');
     }
 
     documents.forEach((text, index) => {

@@ -74,7 +74,7 @@ export class TokensService {
   ): Promise<TokenData[]> {
     try {
       const tokensMarketObservations: TokenMarketObservation[] =
-        await this.fetchInitialTokenList(100);
+        await this.fetchInitialTokenList(200);
 
       const filteredTokens: TokenMarketObservation[] =
         await this.applyBaselineFilters(tokensMarketObservations, params);

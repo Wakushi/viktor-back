@@ -1,38 +1,84 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, Logger } from '@nestjs/common';
 import { CsvService } from 'src/shared/services/csv.service';
 import {
+  CoinCodexBaseTokenData,
   CoinCodexCsvDailyMetrics,
   CoinCodexTokenData,
 } from './entities/coincodex.type';
 import { SupplyMetrics } from './entities/supply.type';
-import { TokenMarketObservation } from '../tokens/entities/token.type';
-import { TradingDecision } from '../agent/entities/trading-decision.type';
 import { MarketObservationEmbedding } from '../embedding/entities/embedding.type';
-import { zeroAddress } from 'viem';
 import { EmbeddingService } from '../embedding/embedding.service';
 import { SupabaseService } from '../supabase/supabase.service';
+import * as puppeteer from 'puppeteer';
+import * as fs from 'fs';
+import * as path from 'path';
+import {
+  buildObservationsFromMetrics,
+  createTradingDecisions,
+} from './helpers';
 
 @Injectable()
 export class TrainingService {
+  private readonly logger = new Logger(TrainingService.name);
+
   constructor(
     private readonly csvService: CsvService,
     private readonly embeddingService: EmbeddingService,
     private readonly supabaseService: SupabaseService,
   ) {}
 
-  public async saveHistoricalTokenMetrics(tokenSymbol: string): Promise<{
-    tokenMarketObservations: TokenMarketObservation[];
-    tradingDecisions: Omit<TradingDecision, 'id'>[];
-  }> {
+  public async processTokensHistoricalData(
+    tokenNames: string[],
+  ): Promise<void> {
+    for (const tokenName of tokenNames) {
+      try {
+        this.logger.log('Processing token ', tokenName);
+
+        const tokenSymbol = await this.getCoinCodexIdentifier(tokenName);
+
+        this.logger.log('Found token symbol ', tokenSymbol);
+
+        if (!tokenSymbol) continue;
+
+        this.logger.log('Downloading historical data...');
+
+        await this.downloadCoinCodexCsv(tokenName);
+
+        this.logger.log('Saving metrics..');
+
+        await this.saveHistoricalTokenMetrics(tokenSymbol);
+
+        this.logger.log(`Processed token ${tokenName} successfully !`);
+      } catch (error) {
+        this.logger.error(error);
+        continue;
+      }
+    }
+  }
+
+  private async saveHistoricalTokenMetrics(tokenSymbol: string): Promise<any> {
     try {
+      this.logger.log('Fetching supply metrics for ', tokenSymbol);
+
       const staticSupplyMetrics = await this.fetchSupplyMetrics(tokenSymbol);
-      const dailyMetrics = await this.fetchDailyMetrics(tokenSymbol);
+
+      this.logger.log('Fetching daily metrics for ', staticSupplyMetrics.name);
+
+      const dailyMetrics = await this.fetchDailyMetrics(
+        staticSupplyMetrics.name,
+      );
 
       dailyMetrics.sort(
         (a, b) => new Date(a.Start).getTime() - new Date(b.Start).getTime(),
       );
 
-      const tokenMarketObservations = this.buildObservationsFromMetrics({
+      this.logger.log(
+        `Fetched ${dailyMetrics.length} days of historical data !`,
+      );
+
+      this.logger.log('Building market observations...');
+
+      const tokenMarketObservations = buildObservationsFromMetrics({
         tokenSymbol,
         dailyMetrics,
         staticSupplyMetrics,
@@ -40,113 +86,30 @@ export class TrainingService {
 
       tokenMarketObservations.splice(0, 1);
 
+      this.logger.log('Generating embeddings...');
+
       const marketObservationEmbeddings =
-        await this.generateMarketObservationEmbeddings(tokenMarketObservations);
-
-      const insertedObservations = await this.insertMarketObservationEmbeddings(
-        marketObservationEmbeddings,
-      );
-
-      const tradingDecisions =
-        this.createTradingDecisions(insertedObservations);
-
-      await this.insertTradingDecisions(tradingDecisions);
-
-      return { tokenMarketObservations, tradingDecisions };
-    } catch (error) {
-      console.error('Error processing historical data:', error);
-      throw error;
-    }
-  }
-
-  private async generateMarketObservationEmbeddings(
-    tokenMarketObservations: TokenMarketObservation[],
-  ): Promise<Omit<MarketObservationEmbedding, 'id'>[]> {
-    const marketObservationEmbeddings: Omit<
-      MarketObservationEmbedding,
-      'id'
-    >[] = [];
-
-    for (const tokenMarketObs of tokenMarketObservations) {
-      const marketObservationEmbedding =
-        await this.generateMarketObservationWithEmbedding(tokenMarketObs);
-      marketObservationEmbeddings.push(marketObservationEmbedding);
-    }
-
-    return marketObservationEmbeddings;
-  }
-
-  private async insertMarketObservationEmbeddings(
-    marketObservationEmbeddings: Omit<MarketObservationEmbedding, 'id'>[],
-  ): Promise<MarketObservationEmbedding[]> {
-    const insertedObservations: MarketObservationEmbedding[] = [];
-
-    for (const observation of marketObservationEmbeddings) {
-      const inserted =
-        await this.supabaseService.insertMarketObservationEmbedding(
-          observation,
+        await this.embeddingService.generateMarketObservationEmbeddings(
+          tokenMarketObservations,
         );
-      insertedObservations.push(inserted);
-    }
 
-    return insertedObservations;
-  }
+      this.logger.log('Inserting embeddings...');
 
-  private createTradingDecisions(
-    insertedObservations: MarketObservationEmbedding[],
-  ): Omit<TradingDecision, 'id'>[] {
-    const tradingDecisions: Omit<TradingDecision, 'id'>[] = insertedObservations
-      .slice(0, -1)
-      .map((marketObservation, i) => {
-        const { id, price_usd } = marketObservation;
-        const nextDayObs = insertedObservations[i + 1];
+      const insertedObservations: MarketObservationEmbedding[] =
+        await this.supabaseService.insertManyMarketObservationEmbedding(
+          marketObservationEmbeddings,
+        );
 
-        return this.createSingleTradingDecision(id, price_usd, nextDayObs);
-      });
+      this.logger.log('Generating decisions...');
 
-    return tradingDecisions;
-  }
+      const tradingDecisions = createTradingDecisions(insertedObservations);
 
-  private createSingleTradingDecision(
-    observationId: string,
-    currentPrice: number,
-    nextDayObs?: MarketObservationEmbedding,
-  ): Omit<TradingDecision, 'id'> {
-    const price24hAfter = nextDayObs?.price_usd;
-    const price24hAfterPct = nextDayObs
-      ? ((nextDayObs.price_usd - currentPrice) / currentPrice) * 100
-      : undefined;
+      this.logger.log('Inserting decisions...');
 
-    return {
-      observation_id: observationId,
-      wallet_address: zeroAddress,
-      token_address: zeroAddress,
-
-      decision_type: this.generateDecisionType(),
-      decision_timestamp: Date.now(),
-      decision_price_usd: currentPrice,
-
-      status: 'COMPLETED',
-      execution_successful: true,
-      execution_price_usd: currentPrice,
-
-      price_24h_after_usd: price24hAfter,
-      price_change_24h_pct: price24hAfterPct,
-
-      created_at: new Date(),
-      updated_at: new Date(),
-    };
-  }
-
-  private generateDecisionType(): 'BUY' | 'SELL' {
-    return 'BUY';
-  }
-
-  private async insertTradingDecisions(
-    tradingDecisions: Omit<TradingDecision, 'id'>[],
-  ): Promise<void> {
-    for (const tradingDecision of tradingDecisions) {
-      await this.supabaseService.insertTradingDecision(tradingDecision);
+      await this.supabaseService.insertManyTradingDecisions(tradingDecisions);
+    } catch (error) {
+      this.logger.error('Error processing historical data:', error);
+      throw error;
     }
   }
 
@@ -173,14 +136,11 @@ export class TrainingService {
 
     const data: CoinCodexTokenData = await response.json();
 
-    return this.calculateSupplyMetrics(data);
-  }
-
-  private calculateSupplyMetrics(data: CoinCodexTokenData): SupplyMetrics {
     const totalSupply = Number(data.total_supply);
     const circulatingSupply = data.supply;
 
     return {
+      name: data.slug.toLowerCase(),
       fully_diluted_valuation: totalSupply * data.last_price_usd,
       circulating_supply: circulatingSupply,
       total_supply: totalSupply,
@@ -189,116 +149,158 @@ export class TrainingService {
     };
   }
 
-  private buildObservationsFromMetrics({
-    tokenSymbol,
-    dailyMetrics,
-    staticSupplyMetrics,
-  }: {
-    tokenSymbol: string;
-    dailyMetrics: CoinCodexCsvDailyMetrics[];
-    staticSupplyMetrics: SupplyMetrics;
-  }): TokenMarketObservation[] {
-    const round = {
-      price: (n: number) => Number(n.toFixed(2)),
-      percentage: (n: number) => Number(n.toFixed(5)),
-      marketCapPercentage: (n: number) => {
-        const rounded = Math.abs(n) < 0.0001 ? 0 : Number(n.toFixed(4));
-        return Number(rounded.toString().replace(/\.?0+$/, ''));
-      },
-      integer: (n: number) => Math.round(n),
-    };
-
-    let historicalHigh = dailyMetrics[0].Close;
-    let historicalLow = dailyMetrics[0].Close;
-
-    return dailyMetrics.map((dailyMetric, index) => {
-      const prevDay = index > 0 ? dailyMetrics[index - 1] : null;
-      const timestamp = new Date(dailyMetric.Start).getTime();
-      const currentPrice = round.price(dailyMetric.Close);
-
-      const ath = round.price(historicalHigh);
-      const atl = round.price(historicalLow);
-
-      const ath_change_percentage = round.percentage(
-        ((currentPrice - ath) / ath) * 100,
-      );
-
-      const atl_change_percentage = round.percentage(
-        ((currentPrice - atl) / atl) * 100,
-      );
-
-      const price_change_24h = prevDay
-        ? round.price(dailyMetric.Close - prevDay.Close)
-        : null;
-
-      const price_change_percentage_24h = prevDay
-        ? round.percentage(
-            ((dailyMetric.Close - prevDay.Close) / prevDay.Close) * 100,
-          )
-        : null;
-
-      const market_cap_change_24h = prevDay
-        ? round.integer(dailyMetric['Market Cap'] - prevDay['Market Cap'])
-        : null;
-
-      const market_cap_change_percentage_24h = prevDay
-        ? round.marketCapPercentage(
-            ((dailyMetric['Market Cap'] - prevDay['Market Cap']) /
-              prevDay['Market Cap']) *
-              100,
-          )
-        : null;
-
-      historicalHigh = Math.max(historicalHigh, dailyMetric.Close);
-      historicalLow = Math.min(historicalLow, dailyMetric.Close);
-
-      return {
-        coin_gecko_id: tokenSymbol.toLowerCase(),
-        timestamp,
-        created_at: new Date(timestamp),
-        market_cap_rank: 1,
-        price_usd: currentPrice,
-        high_24h: round.price(dailyMetric.High),
-        low_24h: round.price(dailyMetric.Low),
-        market_cap: round.integer(dailyMetric['Market Cap']),
-        total_volume: round.integer(dailyMetric.Volume),
-
-        ath,
-        atl,
-        ath_change_percentage,
-        atl_change_percentage,
-
-        price_change_24h,
-        price_change_percentage_24h,
-        market_cap_change_24h,
-        market_cap_change_percentage_24h,
-
-        fully_diluted_valuation: round.integer(
-          dailyMetric.Close * staticSupplyMetrics.total_supply,
-        ),
-        circulating_supply: staticSupplyMetrics.circulating_supply,
-        total_supply: staticSupplyMetrics.total_supply,
-        max_supply: staticSupplyMetrics.max_supply,
-        supply_ratio: staticSupplyMetrics.supply_ratio,
-      };
+  private async downloadCoinCodexCsv(tokenSymbol: string): Promise<string> {
+    const browser = await puppeteer.launch({
+      headless: true,
+      args: ['--no-sandbox', '--disable-setuid-sandbox'],
     });
+
+    try {
+      const downloadPath = path.join(process.cwd(), 'downloads');
+      const downloadFolder = path.resolve(downloadPath);
+      await fs.promises.mkdir(downloadFolder, { recursive: true });
+
+      const page = await browser.newPage();
+
+      await page.setRequestInterception(true);
+      const cdpSession = await page.target().createCDPSession();
+      await cdpSession.send('Page.setDownloadBehavior', {
+        behavior: 'allow',
+        downloadPath: downloadFolder,
+      });
+
+      page.on('request', (request) => {
+        try {
+          request.continue();
+        } catch (error) {
+          this.logger.error(`Request interception error: ${error.message}`);
+          request.abort('failed');
+        }
+      });
+
+      const url = `https://coincodex.com/crypto/${tokenSymbol}/historical-data`;
+      const altUrl = `https://coincodex.com/crypto/${tokenSymbol}-token/historical-data`;
+
+      const EXPORT_BUTTON_SELECTOR = '.export';
+      const DATE_SELECT_BUTTON_SELECTOR = '.date-select';
+
+      await page.goto(url);
+
+      try {
+        await page.waitForSelector(DATE_SELECT_BUTTON_SELECTOR, {
+          timeout: 5000,
+        });
+      } catch (error) {
+        this.logger.log(
+          `Wrong page at url ${url}, trying with '-token' suffix...`,
+        );
+
+        await page.goto(altUrl);
+
+        await page.waitForSelector(DATE_SELECT_BUTTON_SELECTOR, {
+          timeout: 5000,
+        });
+      }
+
+      await page.click(DATE_SELECT_BUTTON_SELECTOR);
+
+      await page.waitForSelector('.calendars', {
+        timeout: 5000,
+      });
+
+      const firstInput = await page.waitForSelector(
+        '.calendars input[type="date"]:first-of-type',
+        {
+          timeout: 5000,
+        },
+      );
+
+      await firstInput.type('01011970');
+
+      await page.waitForSelector('.select button.button.button-primary', {
+        timeout: 5000,
+      });
+
+      const buttonText = await page.evaluate(() => {
+        const button = document.querySelector(
+          '.select button.button.button-primary',
+        );
+        return button ? button.textContent.trim() : null;
+      });
+
+      if (buttonText === 'Select') {
+        await page.click('.select button.button.button-primary');
+      } else {
+        throw new Error(
+          `Expected to find "Select" button but found "${buttonText}" instead`,
+        );
+      }
+
+      await page.evaluate(
+        () => new Promise((resolve) => setTimeout(resolve, 3000)),
+      );
+
+      await page.waitForSelector(EXPORT_BUTTON_SELECTOR, {
+        timeout: 5000,
+        visible: true,
+      });
+
+      await page.evaluate((selector) => {
+        const button = document.querySelector(selector) as HTMLButtonElement;
+        if (button) button.click();
+      }, EXPORT_BUTTON_SELECTOR);
+
+      const downloadTimeout = 30000;
+      const checkInterval = 1000;
+      let elapsed = 0;
+
+      const existingFiles = new Set(await fs.promises.readdir(downloadFolder));
+
+      while (elapsed < downloadTimeout) {
+        const currentFiles = await fs.promises.readdir(downloadFolder);
+
+        const newCompletedFiles = currentFiles.filter(
+          (file) => !file.endsWith('.crdownload') && !existingFiles.has(file),
+        );
+
+        if (newCompletedFiles.length > 0) {
+          const downloadedFile = newCompletedFiles[0];
+
+          this.logger.log('Downloaded file ' + downloadedFile);
+
+          const oldPath = path.join(downloadFolder, downloadedFile);
+          const fileExtension = path.extname(downloadedFile);
+          const newFile = `${tokenSymbol}${fileExtension}`;
+          const newPath = path.join(downloadFolder, newFile);
+
+          await fs.promises.rename(oldPath, newPath);
+          return newPath;
+        }
+
+        await new Promise((resolve) => setTimeout(resolve, checkInterval));
+        elapsed += checkInterval;
+      }
+
+      throw new Error('Download timeout exceeded');
+    } catch (error) {
+      this.logger.error(`Download failed: ${error.message}`);
+      throw error;
+    } finally {
+      await browser.close();
+    }
   }
 
-  private async generateMarketObservationWithEmbedding(
-    observation: TokenMarketObservation,
-  ): Promise<Omit<MarketObservationEmbedding, 'id'>> {
-    const embeddingText =
-      this.embeddingService.getEmbeddingTextFromObservation(observation);
+  private async getCoinCodexIdentifier(tokenSymbol: string): Promise<string> {
+    const url = 'https://coincodex.com/apps/coincodex/cache/all_coins.json';
 
-    const embeddings = await this.embeddingService.createEmbeddings([
-      embeddingText,
-    ]);
+    const response = await fetch(url);
+    const data: CoinCodexBaseTokenData[] = await response.json();
 
-    const marketObservationEmbedding: Omit<MarketObservationEmbedding, 'id'> = {
-      ...observation,
-      embedding: embeddings[0].embedding,
-    };
+    const token = data.find(
+      (t) =>
+        t.ccu_slug && t.ccu_slug.toLowerCase() === tokenSymbol.toLowerCase(),
+    );
 
-    return marketObservationEmbedding;
+    return token ? token.symbol : '';
   }
 }

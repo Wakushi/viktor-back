@@ -13,6 +13,8 @@ import { TradingDecision } from '../agent/entities/trading-decision.type';
 export class SupabaseService {
   private _client: SupabaseClient<any, 'public', any>;
 
+  private readonly BATCH_SIZE = 100;
+
   constructor(
     @Inject('SUPABASE_CONFIG')
     private readonly config: { privateKey: string; url: string },
@@ -32,71 +34,39 @@ export class SupabaseService {
   public async insertMarketObservationEmbedding(
     marketObservationEmbedding: Omit<MarketObservationEmbedding, 'id'>,
   ): Promise<MarketObservationEmbedding> {
-    try {
-      const { data, error } = await this.client
-        .from(Collection.MARKET_OBSERVATIONS)
-        .insert(marketObservationEmbedding)
-        .select()
-        .single();
+    return this.insertSingle<MarketObservationEmbedding>(
+      Collection.MARKET_OBSERVATIONS,
+      marketObservationEmbedding,
+    );
+  }
 
-      if (error) {
-        throw new Error(`Supabase insert error: ${error.message}`);
-      }
-
-      return data;
-    } catch (error) {
-      console.error('Failed to save market observation embedding:', error);
-      throw new Error(
-        'Failed to save market observation embedding in vector collection',
-      );
-    }
+  public async insertManyMarketObservationEmbedding(
+    marketObservationEmbedding: Omit<MarketObservationEmbedding, 'id'>[],
+  ): Promise<MarketObservationEmbedding[]> {
+    return this.batchInsert<MarketObservationEmbedding>(
+      Collection.MARKET_OBSERVATIONS,
+      marketObservationEmbedding,
+      { progressLabel: 'market observations' },
+    );
   }
 
   public async insertTradingDecision(
     decision: Omit<TradingDecision, 'id'>,
   ): Promise<TradingDecision> {
-    try {
-      const { data, error } = await this.client
-        .from(Collection.TRADING_DECISIONS)
-        .insert(decision)
-        .select()
-        .single();
-
-      if (error) {
-        throw new SupabaseError(
-          `Failed to insert trading decision: ${error.message}`,
-          error,
-        );
-      }
-
-      return data;
-    } catch (error) {
-      console.error('Error inserting trading decision:', error);
-      throw error;
-    }
+    return this.insertSingle<TradingDecision>(
+      Collection.TRADING_DECISIONS,
+      decision,
+    );
   }
 
   public async insertManyTradingDecisions(
     decisions: Omit<TradingDecision, 'id'>[],
   ): Promise<TradingDecision[]> {
-    try {
-      const { data, error } = await this.client
-        .from(Collection.TRADING_DECISIONS)
-        .insert(decisions)
-        .select();
-
-      if (error) {
-        throw new SupabaseError(
-          `Failed to insert trading decisions: ${error.message}`,
-          error,
-        );
-      }
-
-      return data;
-    } catch (error) {
-      console.error('Error inserting trading decisions:', error);
-      throw error;
-    }
+    return this.batchInsert<TradingDecision>(
+      Collection.TRADING_DECISIONS,
+      decisions,
+      { progressLabel: 'trading decisions' },
+    );
   }
 
   public async matchMarketObservations({
@@ -215,6 +185,74 @@ export class SupabaseService {
       console.log('Successfully wiped test tables');
     } catch (error) {
       console.error('Error wiping test tables:', error);
+      throw error;
+    }
+  }
+
+  private async batchInsert<T extends object>(
+    collection: Collection,
+    items: Omit<T, 'id'>[],
+    options: {
+      batchSize?: number;
+      progressLabel?: string;
+    } = {},
+  ): Promise<T[]> {
+    const { batchSize = this.BATCH_SIZE, progressLabel = 'items' } = options;
+    const allInsertedData: T[] = [];
+
+    try {
+      for (let i = 0; i < items.length; i += batchSize) {
+        const batch = items.slice(i, i + batchSize);
+        const currentBatch = i / batchSize + 1;
+        const totalBatches = Math.ceil(items.length / batchSize);
+
+        console.log(
+          `Processing ${progressLabel} batch ${currentBatch} of ${totalBatches}`,
+        );
+
+        const { data, error } = await this.client
+          .from(collection)
+          .insert(batch)
+          .select();
+
+        if (error) {
+          throw new SupabaseError(
+            `Failed to insert batch in ${collection}: ${error.message}`,
+            error,
+          );
+        }
+
+        allInsertedData.push(...data);
+      }
+
+      return allInsertedData;
+    } catch (error) {
+      console.error(`Error in batch insert for ${collection}:`, error);
+      throw error;
+    }
+  }
+
+  private async insertSingle<T extends object>(
+    collection: Collection,
+    item: Omit<T, 'id'>,
+  ): Promise<T> {
+    try {
+      const { data, error } = await this.client
+        .from(collection)
+        .insert(item)
+        .select()
+        .single();
+
+      if (error) {
+        throw new SupabaseError(
+          `Failed to insert item in ${collection}: ${error.message}`,
+          error,
+        );
+      }
+
+      return data;
+    } catch (error) {
+      console.error(`Error inserting single item in ${collection}:`, error);
       throw error;
     }
   }

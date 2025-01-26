@@ -2,6 +2,7 @@ import {
   TokenData,
   TokenMarketObservation,
 } from 'src/modules/tokens/entities/token.type';
+import { TradingDecision } from './trading-decision.type'
 
 export interface TokenAnalysisResult {
   token: TokenData;

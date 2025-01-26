@@ -1,4 +1,5 @@
 import { TokenMarketObservation } from 'src/modules/tokens/entities/token.type';
+import { TradingDecision } from '../entities/trading-decision.type';
 
 export type DecisionStats = {
   buyCount: number;

@@ -1,4 +1,5 @@
 import { TokenAnalysisResult } from 'src/modules/agent/entities/analysis-result.type';
+import { TradingDecision } from 'src/modules/agent/entities/trading-decision.type';
 import { TokenMarketObservation } from 'src/modules/tokens/entities/token.type';
 
 export class AnalysisFormatter {

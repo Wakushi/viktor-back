@@ -13,7 +13,7 @@ export class CsvService {
    * @returns Processed historical data
    */
   public async getHistoricalTokenData(fileName: string): Promise<any[]> {
-    const filePath = path.join(process.cwd(), 'src', 'data', fileName);
+    const filePath = path.join(process.cwd(), 'downloads', fileName);
 
     const requiredColumns = [
       'Start',
