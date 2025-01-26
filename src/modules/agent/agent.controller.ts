@@ -9,6 +9,7 @@ import { AgentService } from './agent.service';
 import { MakeDecisionDto } from './dto/make-decision.dto';
 import { LockService } from 'src/shared/services/lock.service';
 import { TokenAnalysisResult } from './entities/analysis-result.type';
+import { logResults } from './helpers/utils';
 
 @Controller('agent')
 export class AgentController {
@@ -46,13 +47,7 @@ export class AgentController {
     const analysisResults: TokenAnalysisResult[] =
       await this.agentService.seekMarketBuyingTargets();
 
-    console.log('[Analysis result]');
-
-    analysisResults.forEach((res) => {
-      console.log(
-        `${res.token.metadata.name} - Buying confidence: ${res.buyingConfidence}`,
-      );
-    });
+    logResults(analysisResults);
 
     return analysisResults;
   }

@@ -64,9 +64,18 @@ export class TrainingService {
 
       this.logger.log('Fetching daily metrics for ', staticSupplyMetrics.name);
 
-      const dailyMetrics = await this.fetchDailyMetrics(
-        staticSupplyMetrics.name,
-      );
+      let dailyMetrics: CoinCodexCsvDailyMetrics[] = [];
+
+      try {
+        dailyMetrics = await this.fetchDailyMetrics(staticSupplyMetrics.name);
+      } catch (error) {
+        dailyMetrics = await this.fetchDailyMetrics(tokenSymbol.toLowerCase());
+      }
+
+      if (!dailyMetrics.length)
+        throw new Error(
+          `No daily metrics found for token ${staticSupplyMetrics.name} ${tokenSymbol.toLowerCase()}`,
+        );
 
       dailyMetrics.sort(
         (a, b) => new Date(a.Start).getTime() - new Date(b.Start).getTime(),
@@ -296,10 +305,14 @@ export class TrainingService {
     const response = await fetch(url);
     const data: CoinCodexBaseTokenData[] = await response.json();
 
-    const token = data.find(
+    const matchings = data.filter(
       (t) =>
-        t.ccu_slug && t.ccu_slug.toLowerCase() === tokenSymbol.toLowerCase(),
+        t.shortname && t.shortname.toLowerCase() === tokenSymbol.toLowerCase(),
     );
+
+    const token = matchings[0];
+
+    console.log('Identified token :', token);
 
     return token ? token.symbol : '';
   }

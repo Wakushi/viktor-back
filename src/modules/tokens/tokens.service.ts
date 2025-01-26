@@ -162,7 +162,17 @@ export class TokensService {
     for (let token of tokens) {
       const metadata = await this.getTokenMetadataById(token.coin_gecko_id);
 
-      if (metadata) {
+      const isStablecoin =
+        metadata?.categories &&
+        metadata.categories.some(
+          (category) => category.toLowerCase() === 'stablecoins',
+        );
+
+      if (isStablecoin) {
+        console.log('Filtering out stablecoin :', metadata.name);
+      }
+
+      if (metadata && !isStablecoin) {
         completeTokens.push({
           market: token,
           metadata,

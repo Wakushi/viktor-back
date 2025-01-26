@@ -86,6 +86,21 @@ function buildObservationsFromMetrics({
       if (typeof n !== 'number' || isNaN(n)) return 0;
       return Math.round(n);
     },
+    safePercentageChange: (current: number, previous: number): number => {
+      if (
+        typeof current !== 'number' ||
+        typeof previous !== 'number' ||
+        isNaN(current) ||
+        isNaN(previous) ||
+        previous === 0
+      ) {
+        return 0;
+      }
+      return (
+        Math.round(((current - previous) / Math.abs(previous)) * 100 * 10000) /
+        10000
+      );
+    },
   };
 
   let historicalHigh = dailyMetrics[0].Close;
@@ -96,41 +111,42 @@ function buildObservationsFromMetrics({
     const timestamp = new Date(dailyMetric.Start).getTime();
     const currentPrice = format.price(dailyMetric.Close);
 
+    const currentMarketCap = format.bigNumber(dailyMetric['Market Cap']);
+    const prevMarketCap = prevDay
+      ? format.bigNumber(prevDay['Market Cap'])
+      : currentMarketCap;
+
     historicalHigh = Math.max(historicalHigh, dailyMetric.Close);
     historicalLow = Math.min(historicalLow, dailyMetric.Close);
 
     const ath = format.price(historicalHigh);
     const atl = format.price(historicalLow);
 
-    const ath_change_percentage = format.percentage(
-      ((currentPrice - ath) / ath) * 100,
+    const ath_change_percentage = format.safePercentageChange(
+      currentPrice,
+      ath,
     );
-
-    const atl_change_percentage = format.percentage(
-      ((currentPrice - atl) / atl) * 100,
+    const atl_change_percentage = format.safePercentageChange(
+      currentPrice,
+      atl,
     );
 
     const price_change_24h = prevDay
       ? format.price(dailyMetric.Close - prevDay.Close)
-      : null;
+      : 0;
 
     const price_change_percentage_24h = prevDay
-      ? format.percentage(
-          ((dailyMetric.Close - prevDay.Close) / prevDay.Close) * 100,
-        )
-      : null;
-
-    const market_cap_change_24h = prevDay
-      ? format.bigNumber(dailyMetric['Market Cap'] - prevDay['Market Cap'])
-      : null;
-
-    const market_cap_change_percentage_24h = prevDay
-      ? format.percentage(
-          ((dailyMetric['Market Cap'] - prevDay['Market Cap']) /
-            prevDay['Market Cap']) *
-            100,
-        )
+      ? format.safePercentageChange(dailyMetric.Close, prevDay.Close)
       : 0;
+
+    const market_cap_change_24h = format.bigNumber(
+      currentMarketCap - prevMarketCap,
+    );
+
+    const market_cap_change_percentage_24h = format.safePercentageChange(
+      currentMarketCap,
+      prevMarketCap,
+    );
 
     return {
       coin_gecko_id: tokenSymbol.toLowerCase(),
@@ -140,7 +156,7 @@ function buildObservationsFromMetrics({
       price_usd: currentPrice,
       high_24h: format.price(dailyMetric.High),
       low_24h: format.price(dailyMetric.Low),
-      market_cap: format.bigNumber(dailyMetric['Market Cap']),
+      market_cap: currentMarketCap,
       total_volume: format.bigNumber(dailyMetric.Volume),
 
       ath,
