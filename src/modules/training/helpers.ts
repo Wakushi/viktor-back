@@ -130,7 +130,7 @@ function buildObservationsFromMetrics({
             prevDay['Market Cap']) *
             100,
         )
-      : null;
+      : 0;
 
     return {
       coin_gecko_id: tokenSymbol.toLowerCase(),
