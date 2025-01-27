@@ -99,10 +99,6 @@ export class EmbeddingService {
 
       const embeddingResults: VoyageEmbeddingData[] = [];
 
-      console.log(
-        `Embedding documents, processing ${batches.length} batches..`,
-      );
-
       for (const batch of batches) {
         const requestBody = {
           input: batch,

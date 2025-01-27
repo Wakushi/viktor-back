@@ -168,10 +168,6 @@ export class TokensService {
           (category) => category.toLowerCase() === 'stablecoins',
         );
 
-      if (isStablecoin) {
-        console.log('Filtering out stablecoin :', metadata.name);
-      }
-
       if (metadata && !isStablecoin) {
         completeTokens.push({
           market: token,

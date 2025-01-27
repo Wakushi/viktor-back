@@ -69,6 +69,8 @@ export class AgentService {
     };
 
     for (const token of tokens) {
+      this.logger.log(`Analysing token ${token.metadata.name}...`);
+
       try {
         const embeddingText =
           this.embeddingService.getEmbeddingTextFromObservation(token.market);
