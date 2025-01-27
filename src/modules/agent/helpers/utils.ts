@@ -9,8 +9,9 @@ export function logResults(analysisResults: TokenAnalysisResult[]) {
       `\nToken: ${res.token.metadata.name} ($${res.token.market.price_usd})`,
     );
     console.log(
-      `Buying Confidence: ${(res.buyingConfidence * 100).toFixed(2)}%`,
+      `Buying Score: ${(res.buyingConfidence.score * 100).toFixed(2)}% `,
     );
+
     console.log('-'.repeat(50));
   });
 }

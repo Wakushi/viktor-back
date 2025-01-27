@@ -12,7 +12,10 @@ import { TokenData } from 'src/modules/tokens/entities/token.type';
 import { TokensService } from '../tokens/tokens.service';
 import { EmbeddingService } from '../embedding/embedding.service';
 import { SupabaseService } from '../supabase/supabase.service';
-import { TokenAnalysisResult } from './entities/analysis-result.type';
+import {
+  MINIMUM_SAMPLE_CONFIDENCE,
+  TokenAnalysisResult,
+} from './entities/analysis-result.type';
 
 @Injectable()
 export class AgentService {
@@ -42,7 +45,7 @@ export class AgentService {
     const analysisResults: TokenAnalysisResult[] = [];
 
     const SIMILARITY_THRESHOLD = 0.7;
-    const MATCH_COUNT = 12;
+    const MATCH_COUNT = 40;
     const MINIMUM_CONFIDENCE_TO_BUY = 0.7;
     const PROFITABLE_THRESHOLD = 0.65;
 
@@ -109,8 +112,21 @@ export class AgentService {
     }
 
     return analysisResults
-      .filter((result) => result.buyingConfidence >= MINIMUM_CONFIDENCE_TO_BUY)
-      .sort((a, b) => b.buyingConfidence - a.buyingConfidence);
+      .filter((result) => {
+        return (
+          result.buyingConfidence.score >= MINIMUM_CONFIDENCE_TO_BUY &&
+          result.buyingConfidence.confidence >= MINIMUM_SAMPLE_CONFIDENCE
+        );
+      })
+      .sort((a, b) => {
+        const scoreDiff = b.buyingConfidence.score - a.buyingConfidence.score;
+
+        if (Math.abs(scoreDiff) < 0.05) {
+          return b.buyingConfidence.confidence - a.buyingConfidence.confidence;
+        }
+
+        return scoreDiff;
+      });
   }
 
   private async submitDecision({

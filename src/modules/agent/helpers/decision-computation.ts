@@ -1,5 +1,13 @@
 import { TokenMarketObservation } from 'src/modules/tokens/entities/token.type';
 import { TradingDecision } from '../entities/trading-decision.type';
+import {
+  BASE_WEIGHT,
+  BuyingConfidenceResult,
+  MIN_SAMPLE_SIZE,
+  OPTIMAL_SAMPLE_SIZE,
+  TIME_DECAY_DAYS,
+  VOLATILITY_WEIGHT,
+} from '../entities/analysis-result.type';
 
 export type DecisionStats = {
   buyCount: number;
@@ -17,22 +25,22 @@ function calculateDecisionTypeStats(
   profitableThreshold: number,
 ): DecisionStats {
   return decisions.reduce(
-    (acc, { decision, profitabilityScore }) => {
-      const isProfitable = profitabilityScore >= profitableThreshold;
+    (acc, { decision }) => {
+      const priceChange = decision.price_change_24h_pct || 0;
 
       if (decision.decision_type === 'BUY') {
         acc.buyCount++;
-        if (isProfitable) {
+
+        if (priceChange >= profitableThreshold) {
           acc.profitableBuyCount++;
-          acc.averageProfitPercent += decision.price_change_24h_pct || 0;
+          acc.averageProfitPercent += priceChange;
         }
       } else {
         acc.sellCount++;
-        if (isProfitable) {
+
+        if (priceChange <= -profitableThreshold) {
           acc.profitableSellCount++;
-          acc.averageProfitPercent += Math.abs(
-            decision.price_change_24h_pct || 0,
-          );
+          acc.averageProfitPercent += Math.abs(priceChange);
         }
       }
 
@@ -47,7 +55,6 @@ function calculateDecisionTypeStats(
     },
   );
 }
-
 function calculateProfitabilityScore(decision: TradingDecision): number {
   if (decision.status !== 'COMPLETED') return 0;
 
@@ -99,14 +106,26 @@ function calculateBuyingConfidence(
     profitability: number;
     confidence: number;
   },
-): number {
+): BuyingConfidenceResult {
   const totalDecisions = stats.buyCount + stats.sellCount;
 
-  if (totalDecisions === 0) return 0;
+  if (totalDecisions === 0 || decisions.length === 0) {
+    return {
+      score: 0,
+      confidence: 0,
+      metrics: {
+        decisionTypeScore: 0,
+        similarityScore: 0,
+        profitabilityScore: 0,
+        volatilityAdjustment: 0,
+        sampleSizeConfidence: 0,
+      },
+    };
+  }
 
-  const calculateDecisionTypeScore = () => {
+  const calculateDecisionTypeScore = (): number => {
     if (stats.buyCount === 0 && stats.sellCount > 0) {
-      return stats.profitableSellCount / stats.sellCount;
+      return 1 - stats.profitableSellCount / stats.sellCount;
     }
 
     if (stats.sellCount === 0 && stats.buyCount > 0) {
@@ -118,29 +137,18 @@ function calculateBuyingConfidence(
     const profitableSellRatio =
       stats.sellCount > 0 ? stats.profitableSellCount / stats.sellCount : 0;
 
-    const recentProfitableRatio =
-      stats.profitableBuyCount + stats.profitableSellCount > 0
-        ? stats.averageProfitPercent /
-          (stats.profitableBuyCount + stats.profitableSellCount)
-        : 0;
+    const buyWeight = stats.buyCount / totalDecisions;
+    const sellWeight = stats.sellCount / totalDecisions;
 
-    const profitabilityMultiplier =
-      recentProfitableRatio !== 0
-        ? Math.min(1.2, Math.max(0.8, recentProfitableRatio / 5))
-        : 1.0;
-
-    const decisionRatio =
-      profitableBuyRatio + profitableSellRatio > 0
-        ? profitableBuyRatio / (profitableBuyRatio + profitableSellRatio)
-        : 0.5;
-
-    return Math.pow(decisionRatio * profitabilityMultiplier, 1.5);
+    return profitableBuyRatio * buyWeight - profitableSellRatio * sellWeight;
   };
 
   const calculateVolatilityScore = (
     marketCondition: TokenMarketObservation,
     decision: TradingDecision,
-  ) => {
+  ): number => {
+    if (!marketCondition.low_24h || marketCondition.low_24h <= 0) return 0;
+
     const priceRange =
       (marketCondition.high_24h - marketCondition.low_24h) /
       marketCondition.low_24h;
@@ -154,7 +162,10 @@ function calculateBuyingConfidence(
     const volatilityScore = Math.exp(-(Math.abs(priceRange - 0.1) / 0.1));
     const positionScore = Math.exp(-(positionInRange - 0.3) / 0.2);
 
-    return volatilityScore * 0.6 + positionScore * 0.4;
+    return Math.max(
+      0,
+      Math.min(1, volatilityScore * 0.6 + positionScore * 0.4),
+    );
   };
 
   const calculateWeightedScore = (
@@ -164,7 +175,7 @@ function calculateBuyingConfidence(
       marketCondition: TokenMarketObservation;
       decision: TradingDecision;
     }>,
-  ) => {
+  ): number => {
     if (values.length === 0) return 0;
 
     const normalizedSimilarities = similarities.map(
@@ -174,7 +185,7 @@ function calculateBuyingConfidence(
     const weights = decisions.map((d, i) => {
       const timeWeight = Math.exp(
         -(Date.now() - new Date(d.decision.created_at).getTime()) /
-          (30 * 24 * 60 * 60 * 1000),
+          (TIME_DECAY_DAYS * 24 * 60 * 60 * 1000),
       );
 
       const volatilityWeight = calculateVolatilityScore(
@@ -189,39 +200,65 @@ function calculateBuyingConfidence(
       );
     });
 
-    const total = weights.reduce((a, b) => a + b, 0);
+    const totalWeight = weights.reduce((a, b) => a + b, 0);
+    if (totalWeight === 0) return 0;
+
     return values.reduce(
-      (sum, value, i) => sum + value * (weights[i] / total),
+      (sum, value, i) => sum + value * (weights[i] / totalWeight),
       0,
     );
   };
 
   const decisionTypeScore = calculateDecisionTypeScore();
-
   const similarityScore = calculateWeightedScore(
     decisions.map((d) => d.similarity),
     decisions.map((d) => d.similarity),
     decisions,
   );
-
   const profitabilityScore = calculateWeightedScore(
     decisions.map((d) => d.profitabilityScore),
     decisions.map((d) => d.similarity),
     decisions,
   );
-
   const volatilityAdjustment =
     decisions.reduce(
       (acc, d) => acc + calculateVolatilityScore(d.marketCondition, d.decision),
       0,
     ) / decisions.length;
 
+  const sampleSizeConfidence = Math.min(
+    1,
+    Math.max(
+      0,
+      (decisions.length - MIN_SAMPLE_SIZE) /
+        (OPTIMAL_SAMPLE_SIZE - MIN_SAMPLE_SIZE),
+    ),
+  );
+
   const baseScore =
     decisionTypeScore * weights.decisionTypeRatio +
     similarityScore * weights.similarity +
     profitabilityScore * weights.profitability;
 
-  return baseScore * (0.85 + 0.15 * volatilityAdjustment);
+  let finalScore =
+    baseScore *
+    (BASE_WEIGHT +
+      volatilityAdjustment * VOLATILITY_WEIGHT +
+      sampleSizeConfidence * 0.2);
+
+  finalScore = Math.max(0, Math.min(1, finalScore));
+
+  return {
+    score: finalScore,
+    confidence: sampleSizeConfidence,
+    metrics: {
+      decisionTypeScore,
+      similarityScore,
+      profitabilityScore,
+      volatilityAdjustment,
+      sampleSizeConfidence,
+    },
+  };
 }
 
 export {
