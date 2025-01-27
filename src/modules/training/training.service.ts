@@ -32,13 +32,16 @@ export class TrainingService {
   ): Promise<void> {
     for (const tokenName of tokenNames) {
       try {
-        this.logger.log('Processing token ', tokenName);
+        this.logger.log('Processing token ' + tokenName);
 
         const tokenSymbol = await this.getCoinCodexIdentifier(tokenName);
 
-        this.logger.log('Found token symbol ', tokenSymbol);
+        if (!tokenSymbol) {
+          this.logger.log('No token found for symbol ' + tokenSymbol);
+          continue;
+        }
 
-        if (!tokenSymbol) continue;
+        this.logger.log('Found token symbol ' + tokenSymbol);
 
         this.logger.log('Downloading historical data...');
 

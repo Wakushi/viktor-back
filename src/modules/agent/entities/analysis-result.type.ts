@@ -17,7 +17,7 @@ export const TIME_DECAY_DAYS = 30;
 
 export type BuyingConfidenceResult = {
   score: number;
-  confidence: number;
+  sampleSizeConfidence: number;
   metrics: {
     decisionTypeScore: number;
     similarityScore: number;

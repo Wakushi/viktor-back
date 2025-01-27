@@ -112,7 +112,7 @@ function calculateBuyingConfidence(
   if (totalDecisions === 0 || decisions.length === 0) {
     return {
       score: 0,
-      confidence: 0,
+      sampleSizeConfidence: 0,
       metrics: {
         decisionTypeScore: 0,
         similarityScore: 0,
@@ -250,7 +250,7 @@ function calculateBuyingConfidence(
 
   return {
     score: finalScore,
-    confidence: sampleSizeConfidence,
+    sampleSizeConfidence: sampleSizeConfidence,
     metrics: {
       decisionTypeScore,
       similarityScore,

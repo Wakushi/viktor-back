@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, Logger } from '@nestjs/common';
 import { Address } from 'viem';
 import {
   calculateBuyingConfidence,
@@ -19,6 +19,8 @@ import {
 
 @Injectable()
 export class AgentService {
+  private readonly logger = new Logger(AgentService.name);
+
   constructor(
     private readonly contractService: ContractService,
     private readonly tokensService: TokensService,
@@ -28,9 +30,19 @@ export class AgentService {
 
   public async seekMarketBuyingTargets(): Promise<TokenAnalysisResult[]> {
     try {
+      this.logger.log('Started token search...');
+
       const tokens: TokenData[] = await this.tokensService.discoverTokens();
 
+      this.logger.log(
+        `Discovered ${tokens.length} tokens ! Starting analysis...`,
+      );
+
       const analysis: TokenAnalysisResult[] = await this.analyzeTokens(tokens);
+
+      this.logger.log(
+        `Analysis completed ! ${analysis.length} results available.`,
+      );
 
       return analysis;
     } catch (error) {
@@ -115,18 +127,11 @@ export class AgentService {
       .filter((result) => {
         return (
           result.buyingConfidence.score >= MINIMUM_CONFIDENCE_TO_BUY &&
-          result.buyingConfidence.confidence >= MINIMUM_SAMPLE_CONFIDENCE
+          result.buyingConfidence.sampleSizeConfidence >=
+            MINIMUM_SAMPLE_CONFIDENCE
         );
       })
-      .sort((a, b) => {
-        const scoreDiff = b.buyingConfidence.score - a.buyingConfidence.score;
-
-        if (Math.abs(scoreDiff) < 0.05) {
-          return b.buyingConfidence.confidence - a.buyingConfidence.confidence;
-        }
-
-        return scoreDiff;
-      });
+      .sort((a, b) => b.buyingConfidence.score - a.buyingConfidence.score);
   }
 
   private async submitDecision({

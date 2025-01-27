@@ -29,6 +29,7 @@ returns table (
   similarity float
 )
 language sql stable
+set statement_timeout = '30s'
 as $$
   select
     market_observations.id,

@@ -10,6 +10,8 @@ import { MakeDecisionDto } from './dto/make-decision.dto';
 import { LockService } from 'src/shared/services/lock.service';
 import { TokenAnalysisResult } from './entities/analysis-result.type';
 import { logResults } from './helpers/utils';
+import { promises as fs } from 'fs';
+import { join } from 'path';
 
 @Controller('agent')
 export class AgentController {
@@ -47,8 +49,35 @@ export class AgentController {
     const analysisResults: TokenAnalysisResult[] =
       await this.agentService.seekMarketBuyingTargets();
 
-    logResults(analysisResults);
+    this.recordAnalysisResults(analysisResults);
 
     return analysisResults;
+  }
+
+  private async recordAnalysisResults(
+    results: TokenAnalysisResult[],
+  ): Promise<string> {
+    const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
+    const filename = `analysis-${timestamp}.json`;
+
+    const analysisDir = join(process.cwd(), 'analysis');
+    await fs.mkdir(analysisDir, { recursive: true });
+
+    const formattedResults: any[] = [];
+
+    results.forEach((res) => {
+      formattedResults.push({
+        token: res.token.metadata.name,
+        price: `$${res.token.market.price_usd}`,
+        buyingConfidence: `${(res.buyingConfidence.score * 100).toFixed(2)}%`,
+      });
+    });
+
+    const content = JSON.stringify([...formattedResults, ...results], null, 2);
+
+    const filepath = join(analysisDir, filename);
+    await fs.writeFile(filepath, content, 'utf8');
+
+    return filepath;
   }
 }
