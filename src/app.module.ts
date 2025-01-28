@@ -11,6 +11,8 @@ import { EmbeddingModule } from './modules/embedding/embedding.module';
 import { UniswapV3Module } from './modules/uniswap-v3/uniswap-v3.module';
 import { TokensModule } from './modules/tokens/tokens.module';
 import { TrainingModule } from './modules/training/training.module';
+import { ScheduleModule } from '@nestjs/schedule';
+import { CronModule } from './modules/cron/cron.module';
 
 @Module({
   imports: [
@@ -56,6 +58,8 @@ import { TrainingModule } from './modules/training/training.module';
     AgentModule.forRoot(),
     TokensModule.forRoot(),
     TrainingModule,
+    ScheduleModule.forRoot(),
+    CronModule,
   ],
 })
 export class AppModule {
