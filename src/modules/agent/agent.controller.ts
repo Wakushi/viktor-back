@@ -4,20 +4,20 @@ import {
   Body,
   HttpCode,
   BadRequestException,
+  Get,
 } from '@nestjs/common';
 import { AgentService } from './agent.service';
 import { MakeDecisionDto } from './dto/make-decision.dto';
 import { LockService } from 'src/shared/services/lock.service';
 import { TokenAnalysisResult } from './entities/analysis-result.type';
-import { logResults } from './helpers/utils';
-import { promises as fs } from 'fs';
-import { join } from 'path';
+import { SupabaseService } from '../supabase/supabase.service';
 
 @Controller('agent')
 export class AgentController {
   constructor(
     private readonly agentService: AgentService,
     private readonly lockService: LockService,
+    private readonly supabaseService: SupabaseService,
   ) {}
 
   // Actual implementation
@@ -42,27 +42,20 @@ export class AgentController {
   //   return { message: 'Ok' };
   // }
 
-  // Test method
   @Post()
   @HttpCode(200)
   async makeDecision() {
     const analysisResults: TokenAnalysisResult[] =
       await this.agentService.seekMarketBuyingTargets();
 
-    this.recordAnalysisResults(analysisResults);
+    this.saveAnalysisResults(analysisResults);
 
     return analysisResults;
   }
 
-  private async recordAnalysisResults(
+  private async saveAnalysisResults(
     results: TokenAnalysisResult[],
-  ): Promise<string> {
-    const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
-    const filename = `analysis-${timestamp}.json`;
-
-    const analysisDir = join(process.cwd(), 'analysis');
-    await fs.mkdir(analysisDir, { recursive: true });
-
+  ): Promise<void> {
     const formattedResults: any[] = [];
 
     results.forEach((res) => {
@@ -73,11 +66,31 @@ export class AgentController {
       });
     });
 
-    const content = JSON.stringify([...formattedResults, ...results], null, 2);
+    await this.supabaseService.insertAnalysisResult({
+      analysis: JSON.stringify(
+        {
+          formattedResults,
+          analysis: results,
+        },
+        null,
+        2,
+      ),
+      created_at: new Date(),
+    });
+  }
 
-    const filepath = join(analysisDir, filename);
-    await fs.writeFile(filepath, content, 'utf8');
+  @Get('analysis')
+  @HttpCode(200)
+  async getAnalysisHistory() {
+    const results = await this.supabaseService.getAnalysisResults();
 
-    return filepath;
+    if (!results) return;
+
+    const formattedResults = results.map((res) => ({
+      ...res,
+      analysis: JSON.parse(res.analysis),
+    }));
+
+    return formattedResults;
   }
 }

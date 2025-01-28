@@ -1,11 +1,7 @@
-import {
-  TokenData,
-  TokenMarketObservation,
-} from 'src/modules/tokens/entities/token.type';
-import { TradingDecision } from './trading-decision.type';
+import { TokenData } from 'src/modules/tokens/entities/token.type';
 
 export const MINIMUM_CONFIDENCE_TO_BUY = 0.85;
-export const MINIMUM_SAMPLE_CONFIDENCE = 0.3;
+export const MINIMUM_SAMPLE_CONFIDENCE = 0.2;
 
 export const MIN_SAMPLE_SIZE = 5;
 export const OPTIMAL_SAMPLE_SIZE = 15;
@@ -30,16 +26,17 @@ export type BuyingConfidenceResult = {
 export type TokenAnalysisResult = {
   token: TokenData;
   buyingConfidence: BuyingConfidenceResult;
-  similarDecisions: Array<{
-    marketCondition: TokenMarketObservation;
-    decision: TradingDecision;
-    similarity: number;
-    profitabilityScore: number;
-  }>;
+  similarDecisionsAmount: number;
   decisionTypeRatio: {
     buyCount: number;
     sellCount: number;
     profitableBuyCount: number;
     profitableSellCount: number;
   };
+};
+
+export type FormattedAnalysisResult = {
+  id: string;
+  analysis: string;
+  created_at: Date | string;
 };

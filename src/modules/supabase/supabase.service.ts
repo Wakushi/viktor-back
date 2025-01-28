@@ -8,6 +8,7 @@ import {
 } from './entities/collections.type';
 import { TokenMetadata } from '../tokens/entities/token.type';
 import { TradingDecision } from '../agent/entities/trading-decision.type';
+import { FormattedAnalysisResult } from '../agent/entities/analysis-result.type';
 
 @Injectable()
 export class SupabaseService {
@@ -144,48 +145,29 @@ export class SupabaseService {
     }
   }
 
-  public async wipeTestTables(): Promise<void> {
+  public async insertAnalysisResult(
+    analysisResult: Omit<FormattedAnalysisResult, 'id'>,
+  ): Promise<void> {
+    this.insertSingle<FormattedAnalysisResult>(
+      Collection.ANALYSIS_RESULTS,
+      analysisResult,
+    );
+  }
+
+  public async getAnalysisResults() {
     try {
-      const { error: sellDecisionsError } = await this.client
-        .from(Collection.TRADING_DECISIONS)
-        .delete()
-        .not('previous_buy_id', 'is', null);
+      const { data, error } = await this.client
+        .from(Collection.ANALYSIS_RESULTS)
+        .select('*');
 
-      if (sellDecisionsError) {
-        throw new SupabaseError(
-          `Failed to wipe sell decisions: ${sellDecisionsError.message}`,
-          sellDecisionsError,
-        );
+      if (error) {
+        throw new SupabaseError('Failed to fetch analysis results', error);
       }
 
-      const { error: remainingDecisionsError } = await this.client
-        .from(Collection.TRADING_DECISIONS)
-        .delete()
-        .gte('id', 0);
-
-      if (remainingDecisionsError) {
-        throw new SupabaseError(
-          `Failed to wipe remaining decisions: ${remainingDecisionsError.message}`,
-          remainingDecisionsError,
-        );
-      }
-
-      const { error: observationsError } = await this.client
-        .from(Collection.MARKET_OBSERVATIONS)
-        .delete()
-        .gte('id', 0);
-
-      if (observationsError) {
-        throw new SupabaseError(
-          `Failed to wipe market observations: ${observationsError.message}`,
-          observationsError,
-        );
-      }
-
-      console.log('Successfully wiped test tables');
+      return data;
     } catch (error) {
-      console.error('Error wiping test tables:', error);
-      throw error;
+      console.error('Error fetching analysis results:', error);
+      return null;
     }
   }
 
