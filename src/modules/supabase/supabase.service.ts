@@ -8,7 +8,10 @@ import {
 } from './entities/collections.type';
 import { TokenMetadata } from '../tokens/entities/token.type';
 import { TradingDecision } from '../agent/entities/trading-decision.type';
-import { FormattedAnalysisResult } from '../agent/entities/analysis-result.type';
+import {
+  FormattedAnalysisResult,
+  TokenAnalysisResult,
+} from '../agent/entities/analysis-result.type';
 
 @Injectable()
 export class SupabaseService {
@@ -169,6 +172,32 @@ export class SupabaseService {
       console.error('Error fetching analysis results:', error);
       return null;
     }
+  }
+
+  public async saveAnalysisResults(
+    results: TokenAnalysisResult[],
+  ): Promise<void> {
+    const formattedResults: any[] = [];
+
+    results.forEach((res) => {
+      formattedResults.push({
+        token: res.token.metadata.name,
+        price: `$${res.token.market.price_usd}`,
+        buyingConfidence: `${(res.buyingConfidence.score * 100).toFixed(2)}%`,
+      });
+    });
+
+    await this.insertAnalysisResult({
+      analysis: JSON.stringify(
+        {
+          formattedResults,
+          analysis: results,
+        },
+        null,
+        2,
+      ),
+      created_at: new Date(),
+    });
   }
 
   private async batchInsert<T extends object>(

@@ -44,9 +44,13 @@ export class AgentController {
 
   @Post()
   @HttpCode(200)
-  async makeDecision() {
+  async makeDecision(@Body() payload: { save: boolean }) {
     const analysisResults: TokenAnalysisResult[] =
       await this.agentService.seekMarketBuyingTargets();
+
+    if (payload.save) {
+      await this.supabaseService.saveAnalysisResults(analysisResults);
+    }
 
     return analysisResults;
   }

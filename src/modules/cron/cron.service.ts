@@ -23,35 +23,9 @@ export class CronService {
 
     this.logger.log('Saving results..');
 
-    this.saveAnalysisResults(analysisResults);
+    this.supabaseService.saveAnalysisResults(analysisResults);
 
     const duration = Date.now() - start;
     this.logger.log(`Analysis task completed in ${duration}ms`);
-  }
-
-  private async saveAnalysisResults(
-    results: TokenAnalysisResult[],
-  ): Promise<void> {
-    const formattedResults: any[] = [];
-
-    results.forEach((res) => {
-      formattedResults.push({
-        token: res.token.metadata.name,
-        price: `$${res.token.market.price_usd}`,
-        buyingConfidence: `${(res.buyingConfidence.score * 100).toFixed(2)}%`,
-      });
-    });
-
-    await this.supabaseService.insertAnalysisResult({
-      analysis: JSON.stringify(
-        {
-          formattedResults,
-          analysis: results,
-        },
-        null,
-        2,
-      ),
-      created_at: new Date(),
-    });
   }
 }
