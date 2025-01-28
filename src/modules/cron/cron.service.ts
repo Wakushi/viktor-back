@@ -13,7 +13,7 @@ export class CronService {
     private readonly agentService: AgentService,
   ) {}
 
-  @Cron(CronExpression.EVERY_10_MINUTES)
+  @Cron(CronExpression.EVERY_30_MINUTES)
   async handleAnalysisJob() {
     const start = Date.now();
     this.logger.log('Starting analysis task...');
