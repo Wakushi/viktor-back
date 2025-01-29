@@ -65,6 +65,7 @@ export class AgentController {
     const formattedResults = results.map((res) => ({
       ...res,
       analysis: JSON.parse(res.analysis),
+      performance: res.performance ? JSON.parse(res.performance) : '',
     }));
 
     return formattedResults;

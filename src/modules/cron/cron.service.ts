@@ -13,10 +13,17 @@ export class CronService {
     private readonly agentService: AgentService,
   ) {}
 
-  @Cron(CronExpression.EVERY_DAY_AT_10AM)
+  @Cron(CronExpression.EVERY_DAY_AT_9AM)
   async handleAnalysisJob() {
     const start = Date.now();
-    this.logger.log('Starting analysis task...');
+
+    this.logger.log('Evaluating past analysis...');
+
+    await this.agentService.evaluatePastAnalysis();
+
+    this.logger.log(
+      'Evaluated past analysis performances. Starting analysis task...',
+    );
 
     const analysisResults: TokenAnalysisResult[] =
       await this.agentService.seekMarketBuyingTargets();

@@ -39,4 +39,45 @@ export type FormattedAnalysisResult = {
   id: string;
   analysis: string;
   created_at: Date | string;
+  performance?: string;
+};
+
+export type BuyingConfidenceMetrics = {
+  decisionTypeScore: number;
+  similarityScore: number;
+  profitabilityScore: number;
+  volatilityAdjustment: number;
+  sampleSizeConfidence: number;
+};
+
+export type BuyingConfidence = {
+  score: number;
+  sampleSizeConfidence: number;
+  metrics: BuyingConfidenceMetrics;
+};
+
+export type DecisionTypeRatio = {
+  buyCount: number;
+  sellCount: number;
+  profitableBuyCount: number;
+  profitableSellCount: number;
+  averageProfitPercent: number;
+};
+
+export type TokenAnalysis = {
+  token: TokenData;
+  buyingConfidence: BuyingConfidence;
+  similarDecisionsAmount: number;
+  decisionTypeRatio: DecisionTypeRatio;
+};
+
+export type FormattedResult = {
+  token: string;
+  price: string;
+  buyingConfidence: string;
+};
+
+export type Analysis = {
+  formattedResults: FormattedResult[];
+  analysis: TokenAnalysis[];
 };

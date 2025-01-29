@@ -174,6 +174,48 @@ export class SupabaseService {
     }
   }
 
+  public async getYesterdayAnalysisResults(): Promise<FormattedAnalysisResult> {
+    try {
+      const yesterday = new Date();
+      yesterday.setDate(yesterday.getDate() - 1);
+
+      const startOfYesterday = new Date(
+        yesterday.setHours(0, 0, 0, 0),
+      ).toISOString();
+
+      const endOfYesterday = new Date(
+        yesterday.setHours(23, 59, 59, 999),
+      ).toISOString();
+
+      const { data, error } = await this.client
+        .from(Collection.ANALYSIS_RESULTS)
+        .select('*')
+        .gte('created_at', startOfYesterday)
+        .lte('created_at', endOfYesterday)
+        .limit(1)
+        .single();
+
+      if (error) {
+        throw new SupabaseError(
+          "Failed to fetch yesterday's analysis results",
+          error,
+        );
+      }
+
+      return data;
+    } catch (error) {
+      console.error("Error fetching yesterday's analysis results:", error);
+      return null;
+    }
+  }
+
+  public async updateAnalysisResults(analysis: FormattedAnalysisResult) {
+    this.updateSingle<FormattedAnalysisResult>(
+      Collection.ANALYSIS_RESULTS,
+      analysis,
+    );
+  }
+
   public async saveAnalysisResults(
     results: TokenAnalysisResult[],
   ): Promise<void> {
@@ -264,6 +306,32 @@ export class SupabaseService {
       return data;
     } catch (error) {
       console.error(`Error inserting single item in ${collection}:`, error);
+      throw error;
+    }
+  }
+
+  private async updateSingle<T extends { id: number | string }>(
+    collection: Collection,
+    item: T,
+  ): Promise<T> {
+    try {
+      const { data, error } = await this.client
+        .from(collection)
+        .update(item)
+        .eq('id', item.id)
+        .select()
+        .single();
+
+      if (error) {
+        throw new SupabaseError(
+          `Failed to update item in ${collection}: ${error.message}`,
+          error,
+        );
+      }
+
+      return data;
+    } catch (error) {
+      console.error(`Error updating single item in ${collection}:`, error);
       throw error;
     }
   }

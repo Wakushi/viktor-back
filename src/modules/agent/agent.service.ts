@@ -13,9 +13,11 @@ import { TokensService } from '../tokens/tokens.service';
 import { EmbeddingService } from '../embedding/embedding.service';
 import { SupabaseService } from '../supabase/supabase.service';
 import {
+  Analysis,
   MINIMUM_SAMPLE_CONFIDENCE,
   TokenAnalysisResult,
 } from './entities/analysis-result.type';
+import { CoinCodexBaseTokenData } from '../training/entities/coincodex.type';
 
 @Injectable()
 export class AgentService {
@@ -134,6 +136,86 @@ export class AgentService {
         );
       })
       .sort((a, b) => b.buyingConfidence.score - a.buyingConfidence.score);
+  }
+
+  public async evaluatePastAnalysis() {
+    try {
+      const formattedAnalysis =
+        await this.supabaseService.getYesterdayAnalysisResults();
+      const analysis: Analysis = JSON.parse(formattedAnalysis.analysis);
+
+      const url = 'https://coincodex.com/apps/coincodex/cache/all_coins.json';
+
+      const response = await fetch(url);
+      const coinCodexData: CoinCodexBaseTokenData[] = await response.json();
+
+      const tokenIds = analysis.analysis.map((t) => ({
+        name: t.token.metadata.name,
+        id: t.token.metadata.id,
+      }));
+
+      const currentPrices: Map<number, number> = new Map();
+
+      for (const token of coinCodexData) {
+        if (currentPrices.size === tokenIds.length) continue;
+
+        const matchingToken = tokenIds.find((tokenId) => {
+          const lowercasedName = tokenId.name.toLowerCase();
+          const lowercasedNameVariant = lowercasedName.replaceAll(' ', '-');
+          const lowercasedId = tokenId.id.toLowerCase();
+          const lowercasedIdVariant = lowercasedId.replaceAll(' ', '-');
+
+          const possibleMatches = [
+            token.ccu_slug?.toLowerCase(),
+            token.name?.toLowerCase(),
+            token.shortname?.toLowerCase(),
+            token.symbol?.toLowerCase(),
+            token.display_symbol?.toLowerCase(),
+            token.aliases?.toLowerCase(),
+            token.name?.toLowerCase(),
+          ];
+
+          return (
+            possibleMatches.includes(lowercasedId) ||
+            possibleMatches.includes(lowercasedIdVariant) ||
+            possibleMatches.includes(lowercasedName) ||
+            possibleMatches.includes(lowercasedNameVariant)
+          );
+        });
+
+        if (matchingToken) {
+          currentPrices.set(
+            tokenIds.indexOf(matchingToken),
+            token.last_price_usd,
+          );
+        }
+      }
+
+      const performance = analysis.formattedResults.map((result, index) => {
+        const initialPrice = parseFloat(result.price.replace('$', ''));
+        const currentPrice = currentPrices.get(index) || 0;
+        const priceChange = currentPrice - initialPrice;
+        const percentageChange = (priceChange / initialPrice) * 100;
+
+        return {
+          token: result.token,
+          initialPrice,
+          currentPrice,
+          priceChange,
+          percentageChange,
+        };
+      });
+
+      const stringifiedPerformance = JSON.stringify(performance);
+
+      this.supabaseService.updateAnalysisResults({
+        ...formattedAnalysis,
+        performance: stringifiedPerformance,
+      });
+    } catch (error) {
+      this.logger.error("Failed to evaluate yesterday's analysis");
+      this.logger.error(error);
+    }
   }
 
   private async submitDecision({
