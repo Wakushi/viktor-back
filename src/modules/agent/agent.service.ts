@@ -141,11 +141,15 @@ export class AgentService {
 
   public async evaluatePastAnalysis() {
     try {
+      this.logger.log("Fetching yesterday's analysis..");
+
       const formattedAnalysis =
         await this.supabaseService.getYesterdayAnalysisResults();
       const analysis: Analysis = JSON.parse(formattedAnalysis.analysis);
 
       const url = 'https://coincodex.com/apps/coincodex/cache/all_coins.json';
+
+      this.logger.log('Fetching current prices..');
 
       const response = await fetch(url);
       const coinCodexData: CoinCodexBaseTokenData[] = await response.json();
@@ -192,6 +196,8 @@ export class AgentService {
         }
       }
 
+      this.logger.log('Computing performances..');
+
       const performances: TokenPerformance[] = [];
 
       for (let i = 0; i < analysis.analysis.length; i++) {
@@ -202,7 +208,11 @@ export class AgentService {
         let priceChange = currentPrice - initialPrice;
         let percentageChange = (priceChange / initialPrice) * 100;
 
-        if (!initialPrice || Math.abs(percentageChange) > 100) {
+        if (!currentPrice || Math.abs(percentageChange) > 100) {
+          this.logger.log(
+            `Found abnormal price for ${result.token.metadata.name}, refetching price...`,
+          );
+
           currentPrice = await this.tokensService.getTokenPriceByCoinGeckoId(
             result.token.market.coin_gecko_id,
           );
@@ -220,6 +230,8 @@ export class AgentService {
       }
 
       const stringifiedPerformance = JSON.stringify(performance);
+
+      this.logger.log('Saving performances..');
 
       this.supabaseService.updateAnalysisResults({
         ...formattedAnalysis,

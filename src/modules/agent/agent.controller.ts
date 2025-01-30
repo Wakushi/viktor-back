@@ -70,4 +70,12 @@ export class AgentController {
 
     return formattedResults;
   }
+
+  @Get('ping')
+  @HttpCode(200)
+  async ping() {
+    return {
+      message: 'Ok',
+    };
+  }
 }
