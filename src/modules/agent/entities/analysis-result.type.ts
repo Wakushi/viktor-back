@@ -81,3 +81,11 @@ export type Analysis = {
   formattedResults: FormattedResult[];
   analysis: TokenAnalysis[];
 };
+
+export type TokenPerformance = {
+  token: string;
+  initialPrice: number;
+  currentPrice: number;
+  priceChange: number;
+  percentageChange: number;
+};

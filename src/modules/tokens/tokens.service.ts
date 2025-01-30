@@ -100,14 +100,15 @@ export class TokensService {
   }
 
   private async fetchInitialTokenList(
-    maxAmount: number = 250,
+    maxAmount: number = 200,
+    pages: number = 2,
   ): Promise<TokenMarketObservation[]> {
     try {
       const params = new URLSearchParams({
         vs_currency: 'usd',
         order: 'volume_desc',
         per_page: maxAmount.toString(),
-        page: '1',
+        page: pages.toString(),
         sparkline: 'false',
       });
 
@@ -202,12 +203,12 @@ export class TokensService {
     }
   }
 
-  private async getCoinGeckoMetadataById(
-    coingeckoId: string,
+  public async getCoinGeckoMetadataById(
+    coinGeckoId: string,
   ): Promise<TokenMetadata | null> {
     try {
       const response = await fetch(
-        `${this.COINGECKO_API}/coins/${coingeckoId}?localization=false&tickers=false&market_data=false&community_data=false&developer_data=false`,
+        `${this.COINGECKO_API}/coins/${coinGeckoId}?localization=false&tickers=false&market_data=false&community_data=false&developer_data=false`,
       );
 
       if (!response.ok) {
@@ -313,5 +314,24 @@ export class TokensService {
       await this.alchemyService.client.core.getTokenMetadata(tokenAddress);
 
     return metadata;
+  }
+
+  public async getTokenPriceByCoinGeckoId(
+    coinGeckoId: string,
+  ): Promise<number> {
+    const response = await fetch(
+      `${this.COINGECKO_API}/coins/${coinGeckoId}?localization=false&tickers=false&community_data=false&developer_data=false`,
+    );
+
+    if (!response.ok) {
+      console.error(`CoinGecko API error: ${response.status}`);
+      return 0;
+    }
+
+    const data = await response.json();
+
+    if (!data) return 0;
+
+    return data.market_data.current_price.usd;
   }
 }

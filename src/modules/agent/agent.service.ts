@@ -16,6 +16,7 @@ import {
   Analysis,
   MINIMUM_SAMPLE_CONFIDENCE,
   TokenAnalysisResult,
+  TokenPerformance,
 } from './entities/analysis-result.type';
 import { CoinCodexBaseTokenData } from '../training/entities/coincodex.type';
 
@@ -191,20 +192,32 @@ export class AgentService {
         }
       }
 
-      const performance = analysis.formattedResults.map((result, index) => {
-        const initialPrice = parseFloat(result.price.replace('$', ''));
-        const currentPrice = currentPrices.get(index) || 0;
-        const priceChange = currentPrice - initialPrice;
-        const percentageChange = (priceChange / initialPrice) * 100;
+      const performances: TokenPerformance[] = [];
 
-        return {
-          token: result.token,
+      for (let i = 0; i < analysis.analysis.length; i++) {
+        const result = analysis.analysis[i];
+
+        const initialPrice = result.token.market.price_usd;
+        let currentPrice = currentPrices.get(i) || 0;
+        let priceChange = currentPrice - initialPrice;
+        let percentageChange = (priceChange / initialPrice) * 100;
+
+        if (!initialPrice || Math.abs(percentageChange) > 100) {
+          currentPrice = await this.tokensService.getTokenPriceByCoinGeckoId(
+            result.token.market.coin_gecko_id,
+          );
+          priceChange = currentPrice - initialPrice;
+          percentageChange = (priceChange / initialPrice) * 100;
+        }
+
+        performances.push({
+          token: result.token.metadata.name,
           initialPrice,
           currentPrice,
           priceChange,
           percentageChange,
-        };
-      });
+        });
+      }
 
       const stringifiedPerformance = JSON.stringify(performance);
 
