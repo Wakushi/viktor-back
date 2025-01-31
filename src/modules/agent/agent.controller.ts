@@ -1,14 +1,6 @@
-import {
-  Controller,
-  Post,
-  Body,
-  HttpCode,
-  BadRequestException,
-  Get,
-} from '@nestjs/common';
+import { Controller, Post, HttpCode, Get } from '@nestjs/common';
 import { AgentService } from './agent.service';
-import { MakeDecisionDto } from './dto/make-decision.dto';
-import { LockService } from 'src/shared/services/lock.service';
+
 import { TokenAnalysisResult } from './entities/analysis-result.type';
 import { SupabaseService } from '../supabase/supabase.service';
 
@@ -16,41 +8,14 @@ import { SupabaseService } from '../supabase/supabase.service';
 export class AgentController {
   constructor(
     private readonly agentService: AgentService,
-    private readonly lockService: LockService,
     private readonly supabaseService: SupabaseService,
   ) {}
 
-  // Actual implementation
-  // @Post()
-  // @HttpCode(200)
-  // async makeDecision(@Body() makeDecisionDto: MakeDecisionDto) {
-  //   const { uuid, wallet, owner } = makeDecisionDto;
-
-  //   if (!uuid || !wallet || !owner) {
-  //     throw new BadRequestException(
-  //       'Missing one or more arguments (required: uuid, wallet, owner)',
-  //     );
-  //   }
-
-  //   if (this.lockService.acquireLock(uuid)) {
-  //     const analysisResults: TokenAnalysisResult[] =
-  //       await this.agentService.seekMarketBuyingTargets();
-
-  //     console.log('[Analysis result]: ', analysisResults);
-  //   }
-
-  //   return { message: 'Ok' };
-  // }
-
-  @Post()
+  @Post('analysis')
   @HttpCode(200)
-  async makeDecision(@Body() payload: { save: boolean }) {
+  async runAnalysis() {
     const analysisResults: TokenAnalysisResult[] =
       await this.agentService.seekMarketBuyingTargets();
-
-    if (payload.save) {
-      await this.supabaseService.saveAnalysisResults(analysisResults);
-    }
 
     return analysisResults;
   }

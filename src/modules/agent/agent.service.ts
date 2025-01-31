@@ -1,13 +1,10 @@
 import { Injectable, Logger } from '@nestjs/common';
-import { Address } from 'viem';
 import {
   calculateBuyingConfidence,
   calculateDecisionTypeStats,
   calculateProfitabilityScore,
 } from './helpers/decision-computation';
-import { Decision } from './entities/decision.type';
-import { generateRequestId } from 'src/shared/utils/helpers';
-import { ContractService } from '../contract/contract.service';
+
 import { TokenData } from 'src/modules/tokens/entities/token.type';
 import { TokensService } from '../tokens/tokens.service';
 import { EmbeddingService } from '../embedding/embedding.service';
@@ -25,7 +22,6 @@ export class AgentService {
   private readonly logger = new Logger(AgentService.name);
 
   constructor(
-    private readonly contractService: ContractService,
     private readonly tokensService: TokensService,
     private readonly embeddingService: EmbeddingService,
     private readonly supabaseService: SupabaseService,
@@ -241,53 +237,5 @@ export class AgentService {
       this.logger.error("Failed to evaluate yesterday's analysis");
       this.logger.error(error);
     }
-  }
-
-  private async submitDecision({
-    uuid,
-    decision,
-    walletAddress,
-  }: {
-    uuid: string;
-    decision: Decision;
-    walletAddress: Address;
-  }) {
-    try {
-      const requestId = generateRequestId(uuid);
-
-      const actionId = this.getActionId(decision.action);
-
-      const contract = this.contractService.agentContract(walletAddress);
-
-      console.log(`[submitDecision] Submitting transaction with params:`, {
-        requestId,
-        actionId,
-        token: decision.token,
-        amount: decision.amount.toString(),
-      });
-
-      const tx = await contract.submitDecision(
-        requestId,
-        actionId,
-        decision.token,
-        decision.amount,
-      );
-
-      console.log(`[submitDecision] Transaction submitted. Hash: ${tx.hash}`);
-
-      await tx.wait();
-
-      console.log(`[submitDecision] Transaction confirmed!`);
-    } catch (error: any) {
-      console.error('Error submitting to contract :', error);
-    }
-  }
-
-  private getActionId(action: string): number {
-    const actionMap = {
-      BUY: 1,
-      SELL: 2,
-    };
-    return actionMap[action] || 0;
   }
 }
