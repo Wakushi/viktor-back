@@ -229,7 +229,7 @@ export class AgentService {
         });
       }
 
-      const stringifiedPerformance = JSON.stringify(performance);
+      const stringifiedPerformance = JSON.stringify(performances);
 
       this.logger.log('Saving performances..');
 

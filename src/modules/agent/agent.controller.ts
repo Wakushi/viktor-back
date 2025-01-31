@@ -78,4 +78,10 @@ export class AgentController {
       message: 'Ok',
     };
   }
+
+  @Post('evaluate')
+  @HttpCode(200)
+  async manualEvaluation() {
+    await this.agentService.evaluatePastAnalysis();
+  }
 }
