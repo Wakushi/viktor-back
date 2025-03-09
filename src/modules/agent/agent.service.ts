@@ -16,6 +16,7 @@ import {
   TokenPerformance,
 } from './entities/analysis-result.type';
 import { CoinCodexBaseTokenData } from '../training/entities/coincodex.type';
+import { findClosestInt } from 'src/shared/utils/helpers';
 
 @Injectable()
 export class AgentService {
@@ -135,12 +136,16 @@ export class AgentService {
       .sort((a, b) => b.buyingConfidence.score - a.buyingConfidence.score);
   }
 
-  public async evaluatePastAnalysis() {
+  public async evaluatePastAnalysis(date?: Date) {
     try {
       this.logger.log("Fetching yesterday's analysis..");
 
+      const yesterday = new Date();
+      yesterday.setDate(yesterday.getDate() - 1);
+
       const formattedAnalysis =
-        await this.supabaseService.getYesterdayAnalysisResults();
+        await this.supabaseService.getAnalysisResultsByDate(date || yesterday);
+
       const analysis: Analysis = JSON.parse(formattedAnalysis.analysis);
 
       const url = 'https://coincodex.com/apps/coincodex/cache/all_coins.json';
@@ -150,17 +155,17 @@ export class AgentService {
       const response = await fetch(url);
       const coinCodexData: CoinCodexBaseTokenData[] = await response.json();
 
-      const tokenIds = analysis.analysis.map((t) => ({
+      const analysisTokens = analysis.analysis.map((t) => ({
         name: t.token.metadata.name,
         id: t.token.metadata.id,
       }));
 
-      const currentPrices: Map<number, number> = new Map();
+      const currentPrices: Map<number, number[]> = new Map();
 
       for (const token of coinCodexData) {
-        if (currentPrices.size === tokenIds.length) continue;
+        if (currentPrices.size === analysisTokens.length) break;
 
-        const matchingToken = tokenIds.find((tokenId) => {
+        const matchingToken = analysisTokens.find((tokenId) => {
           const lowercasedName = tokenId.name.toLowerCase();
           const lowercasedNameVariant = lowercasedName.replaceAll(' ', '-');
           const lowercasedId = tokenId.id.toLowerCase();
@@ -185,10 +190,18 @@ export class AgentService {
         });
 
         if (matchingToken) {
-          currentPrices.set(
-            tokenIds.indexOf(matchingToken),
-            token.last_price_usd,
-          );
+          const index = analysisTokens.indexOf(matchingToken);
+
+          if (currentPrices.has(index)) {
+            currentPrices.set(index, [
+              ...currentPrices.get(index),
+              token.last_price_usd,
+            ]);
+          } else {
+            currentPrices.set(analysisTokens.indexOf(matchingToken), [
+              token.last_price_usd,
+            ]);
+          }
         }
       }
 
@@ -200,11 +213,14 @@ export class AgentService {
         const result = analysis.analysis[i];
 
         const initialPrice = result.token.market.price_usd;
-        let currentPrice = currentPrices.get(i) || 0;
+
+        const currentPricesFound = currentPrices.get(i) || [];
+
+        let currentPrice = findClosestInt(currentPricesFound, initialPrice);
         let priceChange = currentPrice - initialPrice;
         let percentageChange = (priceChange / initialPrice) * 100;
 
-        if (!currentPrice || Math.abs(percentageChange) > 100) {
+        if (!currentPrice || Math.abs(percentageChange) > 90) {
           this.logger.log(
             `Found abnormal price for ${result.token.metadata.name}, refetching price...`,
           );

@@ -127,6 +127,23 @@ export class SupabaseService {
     console.log(`Inserted ${metadata.id} metadata row`);
   }
 
+  public async getTokensMetadata() {
+    try {
+      const { data, error } = await this.client
+        .from(Collection.TOKEN_METADATA)
+        .select('*');
+
+      if (error) {
+        throw new SupabaseError('Failed to fetch analysis results', error);
+      }
+
+      return data;
+    } catch (error) {
+      console.error('Error fetching analysis results:', error);
+      return null;
+    }
+  }
+
   public async getDecisionByMarketObservationId(
     marketObservationId: number,
   ): Promise<TradingDecision | null> {
@@ -174,24 +191,18 @@ export class SupabaseService {
     }
   }
 
-  public async getYesterdayAnalysisResults(): Promise<FormattedAnalysisResult> {
+  public async getAnalysisResultsByDate(
+    date: Date,
+  ): Promise<FormattedAnalysisResult> {
     try {
-      const yesterday = new Date();
-      yesterday.setDate(yesterday.getDate() - 1);
-
-      const startOfYesterday = new Date(
-        yesterday.setHours(0, 0, 0, 0),
-      ).toISOString();
-
-      const endOfYesterday = new Date(
-        yesterday.setHours(23, 59, 59, 999),
-      ).toISOString();
+      const startOfDate = new Date(date.setHours(0, 0, 0, 0)).toISOString();
+      const endOfDate = new Date(date.setHours(23, 59, 59, 999)).toISOString();
 
       const { data, error } = await this.client
         .from(Collection.ANALYSIS_RESULTS)
         .select('*')
-        .gte('created_at', startOfYesterday)
-        .lte('created_at', endOfYesterday)
+        .gte('created_at', startOfDate)
+        .lte('created_at', endOfDate)
         .limit(1)
         .single();
 

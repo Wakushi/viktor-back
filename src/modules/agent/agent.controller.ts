@@ -44,6 +44,12 @@ export class AgentController {
     };
   }
 
+  @Get('tokens')
+  @HttpCode(200)
+  async getTokensMetadata() {
+    return await this.supabaseService.getTokensMetadata();
+  }
+
   @Post('evaluate')
   @HttpCode(200)
   async manualEvaluation() {

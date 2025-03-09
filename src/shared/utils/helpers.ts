@@ -87,3 +87,9 @@ export function isWethToken(token: TokenData): boolean {
     token?.metadata?.symbol.toLowerCase() === 'weth'
   );
 }
+
+export function findClosestInt(arr: number[], target: number): number {
+  return arr.reduce((prev, curr) =>
+    Math.abs(curr - target) < Math.abs(prev - target) ? curr : prev,
+  );
+}
