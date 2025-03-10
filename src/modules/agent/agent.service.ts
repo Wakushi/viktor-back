@@ -148,12 +148,12 @@ export class AgentService {
 
       const analysis: Analysis = JSON.parse(formattedAnalysis.analysis);
 
-      const url = 'https://coincodex.com/apps/coincodex/cache/all_coins.json';
+      const coinCodexData: CoinCodexBaseTokenData[] =
+        await this.fetchWithTimeout({
+          url: 'https://coincodex.com/apps/coincodex/cache/all_coins.json',
+        });
 
       this.logger.log('Fetching current prices..');
-
-      const response = await fetch(url);
-      const coinCodexData: CoinCodexBaseTokenData[] = await response.json();
 
       const analysisTokens = analysis.analysis.map((t) => ({
         name: t.token.metadata.name,
@@ -252,6 +252,45 @@ export class AgentService {
     } catch (error) {
       this.logger.error("Failed to evaluate yesterday's analysis");
       this.logger.error(error);
+    }
+  }
+
+  private async fetchWithTimeout({
+    url,
+    options = {},
+    timeout = 60000,
+  }: {
+    url: string;
+    options?: any;
+    timeout?: number;
+  }): Promise<any> {
+    const controller = new AbortController();
+    const id = setTimeout(() => controller.abort(), timeout);
+
+    try {
+      const response = await fetch(url, {
+        ...options,
+        signal: controller.signal,
+      });
+
+      if (!response.ok) {
+        throw new Error(`HTTP error: ${response.status}`);
+      }
+
+      const text = await response.text();
+
+      try {
+        return JSON.parse(text);
+      } catch (parseError) {
+        this.logger.error(`Invalid JSON received: ${parseError.message}`);
+        this.logger.error(`Error position: ${parseError.position}`);
+        this.logger.error(
+          `JSON snippet near error: ${text.substring(Math.max(0, parseError.position - 100), parseError.position + 100)}`,
+        );
+        throw parseError;
+      }
+    } finally {
+      clearTimeout(id);
     }
   }
 }
