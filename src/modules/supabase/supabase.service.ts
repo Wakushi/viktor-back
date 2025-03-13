@@ -230,6 +230,8 @@ export class SupabaseService {
   public async saveAnalysisResults(
     results: TokenAnalysisResult[],
   ): Promise<void> {
+    if (!results.length) return;
+
     const formattedResults: any[] = [];
 
     results.forEach((res) => {

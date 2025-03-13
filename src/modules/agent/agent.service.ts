@@ -58,7 +58,7 @@ export class AgentService {
 
     const SIMILARITY_THRESHOLD = 0.7;
     const MATCH_COUNT = 40;
-    const MINIMUM_CONFIDENCE_TO_BUY = 0.65;
+    const MINIMUM_CONFIDENCE_TO_BUY = 0.7;
     const PROFITABLE_THRESHOLD = 0.65;
 
     const WEIGHTS = {
