@@ -178,14 +178,14 @@ export class AgentService {
             token.symbol?.toLowerCase(),
             token.display_symbol?.toLowerCase(),
             token.aliases?.toLowerCase(),
-            token.name?.toLowerCase(),
           ];
 
           return (
             possibleMatches.includes(lowercasedId) ||
             possibleMatches.includes(lowercasedIdVariant) ||
             possibleMatches.includes(lowercasedName) ||
-            possibleMatches.includes(lowercasedNameVariant)
+            possibleMatches.includes(lowercasedNameVariant) ||
+            token.shortname.toLowerCase().includes(lowercasedName)
           );
         });
 
