@@ -28,9 +28,13 @@ export class CronService {
     const analysisResults: TokenAnalysisResult[] =
       await this.agentService.seekMarketBuyingTargets();
 
+    this.logger.log('Fetching fear and greed index..');
+
+    const fearAndGreedIndex = await this.agentService.getFearAndGreed();
+
     this.logger.log('Saving results..');
 
-    this.supabaseService.saveAnalysisResults(analysisResults);
+    this.supabaseService.saveAnalysisResults(analysisResults, fearAndGreedIndex);
 
     const duration = Date.now() - start;
     this.logger.log(`Analysis task completed in ${duration}ms`);

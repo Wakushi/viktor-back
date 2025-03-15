@@ -174,7 +174,7 @@ export class SupabaseService {
     );
   }
 
-  public async getAnalysisResults() {
+  public async getAnalysisResults():Promise<FormattedAnalysisResult[] | null> {
     try {
       const { data, error } = await this.client
         .from(Collection.ANALYSIS_RESULTS)
@@ -229,6 +229,7 @@ export class SupabaseService {
 
   public async saveAnalysisResults(
     results: TokenAnalysisResult[],
+    fearAndGreedIndex: string,
   ): Promise<void> {
     if (!results.length) return;
 
@@ -252,6 +253,7 @@ export class SupabaseService {
         2,
       ),
       created_at: new Date(),
+      fearAndGreedIndex,
     });
   }
 

@@ -17,6 +17,7 @@ import {
 } from './entities/analysis-result.type';
 import { CoinCodexBaseTokenData } from '../training/entities/coincodex.type';
 import { findClosestInt } from 'src/shared/utils/helpers';
+import { PuppeteerService } from 'src/shared/services/puppeteer.service';
 
 @Injectable()
 export class AgentService {
@@ -26,6 +27,7 @@ export class AgentService {
     private readonly tokensService: TokensService,
     private readonly embeddingService: EmbeddingService,
     private readonly supabaseService: SupabaseService,
+    private readonly puppeteerService: PuppeteerService,
   ) {}
 
   public async seekMarketBuyingTargets(): Promise<TokenAnalysisResult[]> {
@@ -292,5 +294,9 @@ export class AgentService {
     } finally {
       clearTimeout(id);
     }
+  }
+
+  public async getFearAndGreed(): Promise<string> {
+    return await this.puppeteerService.getFearAndGreed();
   }
 }
