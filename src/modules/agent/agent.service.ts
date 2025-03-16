@@ -159,7 +159,7 @@ export class AgentService {
 
       const analysisTokens = analysis.analysis.map((t) => ({
         name: t.token.metadata.name,
-        id: t.token.metadata.id,
+        id: t.token.metadata.symbol,
       }));
 
       const currentPrices: Map<number, number[]> = new Map();
@@ -218,7 +218,9 @@ export class AgentService {
 
         const currentPricesFound = currentPrices.get(i) || [];
 
-        let currentPrice = findClosestInt(currentPricesFound, initialPrice);
+        let currentPrice = currentPricesFound.length
+          ? findClosestInt(currentPricesFound, initialPrice)
+          : initialPrice;
         let priceChange = currentPrice - initialPrice;
         let percentageChange = (priceChange / initialPrice) * 100;
 

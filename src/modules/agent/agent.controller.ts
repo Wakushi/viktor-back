@@ -13,11 +13,20 @@ export class AgentController {
 
   @Post('analysis')
   @HttpCode(200)
-  async runAnalysis() {
+  async runManualAnalysis() {
     const analysisResults: TokenAnalysisResult[] =
       await this.agentService.seekMarketBuyingTargets();
 
-    return analysisResults;
+    console.log('Fetching fear and greed index..');
+
+    const fearAndGreedIndex = await this.agentService.getFearAndGreed();
+
+    console.log('Saving results..');
+
+    this.supabaseService.saveAnalysisResults(
+      analysisResults,
+      fearAndGreedIndex,
+    );
   }
 
   @Get('analysis')
