@@ -36,7 +36,7 @@ export type TokenAnalysisResult = {
 };
 
 export type FormattedAnalysisResult = {
-  id: string;
+  id: number;
   analysis: string;
   created_at: Date | string;
   performance?: string;

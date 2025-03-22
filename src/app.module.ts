@@ -13,6 +13,7 @@ import { TokensModule } from './modules/tokens/tokens.module';
 import { TrainingModule } from './modules/training/training.module';
 import { ScheduleModule } from '@nestjs/schedule';
 import { CronModule } from './modules/cron/cron.module';
+import { MobulaModule } from './modules/mobula/mobula.module';
 
 @Module({
   imports: [
@@ -60,6 +61,9 @@ import { CronModule } from './modules/cron/cron.module';
     TrainingModule,
     ScheduleModule.forRoot(),
     CronModule,
+    MobulaModule.forRoot({
+      apiKey: process.env.MOBULA_API_KEY,
+    }),
   ],
 })
 export class AppModule {
