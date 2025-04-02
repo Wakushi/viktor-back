@@ -1,6 +1,7 @@
 import { NestFactory } from '@nestjs/core';
 import { AppModule } from './app.module';
 import { NestExpressApplication } from '@nestjs/platform-express';
+var morgan = require('morgan');
 
 async function bootstrap() {
   const app = await NestFactory.create<NestExpressApplication>(AppModule, {
@@ -12,6 +13,8 @@ async function bootstrap() {
       credentials: true,
     },
   });
+
+  app.use(morgan('combined'));
 
   await app.listen(process.env.PORT ?? 3001);
 }
