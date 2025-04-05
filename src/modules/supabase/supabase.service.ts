@@ -134,12 +134,12 @@ export class SupabaseService {
         .select('*');
 
       if (error) {
-        throw new SupabaseError('Failed to fetch analysis results', error);
+        throw new SupabaseError('Failed to fetch tokens metadata', error);
       }
 
       return data;
     } catch (error) {
-      console.error('Error fetching analysis results:', error);
+      console.error('Error fetching tokens metadata:', error);
       return null;
     }
   }
@@ -174,7 +174,7 @@ export class SupabaseService {
     );
   }
 
-  public async getAnalysisResults():Promise<FormattedAnalysisResult[] | null> {
+  public async getAnalysisResults(): Promise<FormattedAnalysisResult[] | null> {
     try {
       const { data, error } = await this.client
         .from(Collection.ANALYSIS_RESULTS)

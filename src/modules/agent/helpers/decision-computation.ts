@@ -55,6 +55,7 @@ function calculateDecisionTypeStats(
     },
   );
 }
+
 function calculateProfitabilityScore(decision: TradingDecision): number {
   if (decision.status !== 'COMPLETED') return 0;
 
