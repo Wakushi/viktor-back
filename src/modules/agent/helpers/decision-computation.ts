@@ -1,4 +1,3 @@
-import { TokenMarketObservation } from 'src/modules/tokens/entities/token.type';
 import { TradingDecision } from '../entities/trading-decision.type';
 import {
   BASE_WEIGHT,
@@ -8,6 +7,7 @@ import {
   TIME_DECAY_DAYS,
   VOLATILITY_WEIGHT,
 } from '../entities/analysis-result.type';
+import { MobulaExtendedToken } from 'src/modules/mobula/entities/mobula.entities';
 
 export type DecisionStats = {
   buyCount: number;
@@ -95,7 +95,7 @@ function normalizeEmbeddingSimilarity(similarity: number): number {
 
 function calculateBuyingConfidence(
   decisions: Array<{
-    marketCondition: TokenMarketObservation;
+    marketCondition: MobulaExtendedToken;
     decision: TradingDecision;
     similarity: number;
     profitabilityScore: number;
@@ -145,35 +145,35 @@ function calculateBuyingConfidence(
   };
 
   const calculateVolatilityScore = (
-    marketCondition: TokenMarketObservation,
+    marketCondition: MobulaExtendedToken,
     decision: TradingDecision,
   ): number => {
-    if (!marketCondition.low_24h || marketCondition.low_24h <= 0) return 0;
+    const change1h = Math.abs(marketCondition.price_change_1h ?? 0);
+    const change24h = Math.abs(marketCondition.price_change_24h ?? 0);
 
-    const priceRange =
-      (marketCondition.high_24h - marketCondition.low_24h) /
-      marketCondition.low_24h;
+    // Approximate volatility using a weighted combination
+    const volatilityScore = change24h * 0.7 + change1h * 0.3;
 
-    const positionInRange =
-      marketCondition.low_24h !== marketCondition.high_24h
-        ? (decision.decision_price_usd - marketCondition.low_24h) /
-          (marketCondition.high_24h - marketCondition.low_24h)
-        : 0.5;
+    // Normalize to a 0–1 score using a sigmoid-style mapping
+    const normalizedScore = 1 - Math.exp(-volatilityScore / 10); // So 10% total = ~0.63
 
-    const volatilityScore = Math.exp(-(Math.abs(priceRange - 0.1) / 0.1));
-    const positionScore = Math.exp(-(positionInRange - 0.3) / 0.2);
-
-    return Math.max(
-      0,
-      Math.min(1, volatilityScore * 0.6 + positionScore * 0.4),
+    // If price range used to calculate entry position is important:
+    const deviation = Math.abs(
+      marketCondition.price - decision.decision_price_usd,
     );
+    const entryDiffRatio =
+      marketCondition.price > 0 ? deviation / marketCondition.price : 0;
+
+    const entryScore = Math.exp(-entryDiffRatio / 0.05); // Close to 1 if decision near market price
+
+    return Math.max(0, Math.min(1, normalizedScore * 0.6 + entryScore * 0.4));
   };
 
   const calculateWeightedScore = (
     values: number[],
     similarities: number[],
     decisions: Array<{
-      marketCondition: TokenMarketObservation;
+      marketCondition: MobulaExtendedToken;
       decision: TradingDecision;
     }>,
   ): number => {

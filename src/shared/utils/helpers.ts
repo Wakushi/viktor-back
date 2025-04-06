@@ -1,6 +1,4 @@
 import { ethers } from 'ethers';
-import { SimplifiedChain, WHITELISTED_CHAINS } from './constants/chains';
-import { TokenData } from 'src/modules/tokens/entities/token.type';
 
 export function generateRequestId(uuid: string): string {
   return ethers.keccak256(ethers.solidityPacked(['string'], [uuid]));
@@ -43,49 +41,6 @@ export async function processBatchWithRateLimit<T, R>(
   }
 
   return results;
-}
-
-export function getChainId(name: string): number | null {
-  const chain = WHITELISTED_CHAINS.find((c) => c.name === name);
-  return chain ? chain.chainId : null;
-}
-
-export function extractTokenChains(token: TokenData): SimplifiedChain[] {
-  if (!token?.metadata?.contract_addresses) return [];
-
-  return Object.keys(token.metadata.contract_addresses).map((chain) => ({
-    name: chain,
-    chainId: getChainId(chain),
-  }));
-}
-
-export function findSimilarChain(
-  tokenA: TokenData,
-  tokenB: TokenData,
-): SimplifiedChain | null {
-  const tokenAChains = extractTokenChains(tokenA);
-  const tokenBChains = extractTokenChains(tokenB);
-
-  let similarChain: SimplifiedChain | null = null;
-
-  tokenAChains.forEach((tokenAChain) => {
-    if (
-      tokenBChains.some(
-        (tokenBChain) => tokenBChain.chainId === tokenAChain.chainId,
-      )
-    ) {
-      similarChain = tokenAChain;
-    }
-  });
-
-  return similarChain;
-}
-
-export function isWethToken(token: TokenData): boolean {
-  return (
-    token?.metadata?.symbol.toLowerCase() === 'eth' ||
-    token?.metadata?.symbol.toLowerCase() === 'weth'
-  );
 }
 
 export function findClosestInt(arr: number[], target: number): number {

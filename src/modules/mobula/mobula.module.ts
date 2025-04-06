@@ -1,7 +1,6 @@
 import { DynamicModule, Module } from '@nestjs/common';
 
 import { MobulaService } from './mobula.service';
-import { MobulaController } from './mobula.controller';
 
 @Module({})
 export class MobulaModule {
@@ -15,7 +14,6 @@ export class MobulaModule {
           useValue: config,
         },
       ],
-      controllers: [MobulaController],
       exports: [MobulaService],
       global: true,
     };

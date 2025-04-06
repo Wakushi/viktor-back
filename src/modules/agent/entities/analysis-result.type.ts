@@ -1,4 +1,4 @@
-import { TokenData } from 'src/modules/tokens/entities/token.type';
+import { MobulaExtendedToken } from 'src/modules/mobula/entities/mobula.entities';
 
 export const MINIMUM_CONFIDENCE_TO_BUY = 0.85;
 export const MINIMUM_SAMPLE_CONFIDENCE = 0.2;
@@ -24,7 +24,8 @@ export type BuyingConfidenceResult = {
 };
 
 export type TokenAnalysisResult = {
-  token: TokenData;
+  token: MobulaExtendedToken;
+  textObservation: string;
   buyingConfidence: BuyingConfidenceResult;
   similarDecisionsAmount: number;
   decisionTypeRatio: {
@@ -65,13 +66,6 @@ export type DecisionTypeRatio = {
   averageProfitPercent: number;
 };
 
-export type TokenAnalysis = {
-  token: TokenData;
-  buyingConfidence: BuyingConfidence;
-  similarDecisionsAmount: number;
-  decisionTypeRatio: DecisionTypeRatio;
-};
-
 export type FormattedResult = {
   token: string;
   price: string;
@@ -80,7 +74,7 @@ export type FormattedResult = {
 
 export type Analysis = {
   formattedResults: FormattedResult[];
-  analysis: TokenAnalysis[];
+  analysis: TokenAnalysisResult[];
 };
 
 export type TokenPerformance = {

@@ -1,90 +1,160 @@
-import { Inject, Injectable } from '@nestjs/common';
-import { Address } from 'viem';
-import { SupabaseService } from '../supabase/supabase.service';
+import { Inject, Injectable, Logger } from '@nestjs/common';
 import {
-  MobulaToken,
+  MobulaMultiDataToken,
+  MobulaMultipleTokens,
+  MobulaSingleToken,
   MobulaTokenPriceHistory,
+  MobulaTokenQueryParams,
 } from './entities/mobula.entities';
+
+// Chains
+// https://docs.mobula.io/blockchains/intro-blockchains
 
 @Injectable()
 export class MobulaService {
+  private readonly logger = new Logger(MobulaService.name);
+
   constructor(
     @Inject('MOBULA_CONFIG')
     private readonly config: {
       apiKey: string;
     },
-    private supabaseService: SupabaseService,
   ) {}
 
-  public async getAllTokens(): Promise<any> {
-    const data = await this.makeRequest(`/all`);
+  public async getAllTokens(
+    fields?: string[],
+  ): Promise<MobulaMultipleTokens[]> {
+    let baseUrl = 'https://production-api.mobula.io/api/1/all?fields=';
+
+    if (fields?.length) {
+      baseUrl += fields.join(',');
+    }
+
+    const response = await fetch(baseUrl);
+    const { data, statusCode, message } = await response.json();
+
+    if (statusCode && statusCode >= 400) {
+      throw new Error(`Error ${statusCode}, ${message}`);
+    }
+
     return data;
   }
 
-  public async getTokenMarketData(asset: string): Promise<any> {
-    const data = await this.makeRequest(`/market/data?asset=${asset}`);
+  public async getTokenMarketDataById(
+    tokenId: number,
+  ): Promise<MobulaMultiDataToken | null> {
+    const { data, error } = await this.makeRequest(
+      `/market/data?id=${tokenId}`,
+    );
+
+    if (error) {
+      this.logger.error(`Error fetching token by id ${tokenId}: ` + error);
+      return null;
+    }
+
     return data;
+  }
+
+  public async getTokenMultiData(
+    tokenIds: number[],
+  ): Promise<MobulaMultiDataToken[]> {
+    const BATCH_SIZE = 500;
+    const results: MobulaMultiDataToken[] = [];
+    let batchCounter = 1;
+
+    this.logger.log(
+      `[getTokenMultiData] Fetching token multi-data (${Math.floor(tokenIds.length / BATCH_SIZE)} batches)`,
+    );
+
+    while (tokenIds.length) {
+      const batch = tokenIds.splice(0, BATCH_SIZE);
+      const endpoint = `/market/multi-data?ids=${batch.join(',')}`;
+
+      this.logger.log(
+        `[getTokenMultiData] Processing batch ${batchCounter} (${tokenIds.length} entries left)`,
+      );
+
+      try {
+        const batchResults = await this.makeRequest(endpoint);
+
+        results.push(
+          ...Array.from(
+            Object.values(batchResults).map(
+              (token) => token as MobulaMultiDataToken,
+            ),
+          ),
+        );
+
+        batchCounter++;
+      } catch (error) {
+        console.error('Error fetching token multi-data :', error);
+        tokenIds.push(...batch);
+      }
+    }
+
+    return results;
   }
 
   public async getTokenPriceHistory(
     asset: string,
   ): Promise<MobulaTokenPriceHistory | null> {
-    const data = await this.makeRequest(`/market/history?asset=${asset}`);
-    return data; // market/history?asset=base&blockchain=base'
-  }
-
-  public async getNewlyListedToken(chain: string): Promise<any> {
-    const data = await this.makeRequest(
-      `/market/query/token?sortBy=listed_at&sortOrder=desc&blockchain=${chain}`,
+    const { data, error } = await this.makeRequest(
+      `/market/history?asset=${asset}`,
     );
-    return data;
-  }
 
-  public async getWalletTransactions(wallet: Address): Promise<any> {
-    const data = await this.makeRequest(
-      `/wallet/transactions?wallet=${wallet}`,
-    );
-    return data;
-  }
-
-  public async getTradingPairs(chain: string): Promise<any> {
-    const data = await this.makeRequest(
-      `/market/blockchain/pairs?blockchain=${chain}&sortBy=createdAt`,
-    );
-    return data;
-  }
-
-  public async getWalletNfts(wallet: Address): Promise<any> {
-    const data = await this.makeRequest(`/wallet/nfts?wallet=${wallet}`);
-    return data;
-  }
-
-  public async getWalletPortfolio(wallet: Address): Promise<any> {
-    const data = await this.makeRequest(
-      `/wallet/portfolio?wallet=${wallet}&pnl=true`,
-    );
-    return data;
-  }
-
-  public async searchTokenByName(token: string): Promise<MobulaToken[] | null> {
-    return await this.makeRequest(`/search?input=${token}`);
-  }
-
-  private async makeRequest(endpoint: string): Promise<any> {
-    const BASE_URL = 'https://production-api.mobula.io/api/1';
-
-    try {
-      const response = await fetch(BASE_URL + endpoint);
-      const { data, statusCode, message } = await response.json();
-
-      if (statusCode && statusCode >= 400) {
-        throw new Error(`Error ${statusCode}, ${message}`);
-      }
-
-      return data;
-    } catch (error) {
-      console.error('Error while making request: ', error.message);
+    if (error) {
+      this.logger.error(
+        `Error fetching price history for asset ${asset}: `,
+        error,
+      );
       return null;
     }
+
+    return data;
+  }
+
+  public async queryTokens(params: MobulaTokenQueryParams): Promise<any> {
+    const baseUrl = 'https://api.mobula.io/api/1/market/query';
+    const url = new URL(baseUrl);
+
+    Object.entries(params).forEach(([key, value]) => {
+      url.searchParams.set(key, String(value));
+    });
+
+    const finalUrl = url.toString();
+
+    const response = await fetch(finalUrl);
+    const { data, statusCode, message } = await response.json();
+
+    if (statusCode && statusCode >= 400) {
+      throw new Error(`Error ${statusCode}, ${message}`);
+    }
+
+    return data;
+  }
+
+  public async searchTokenByName(
+    token: string,
+  ): Promise<MobulaSingleToken[] | null> {
+    const { data, error } = await this.makeRequest(`/search?input=${token}`);
+
+    if (error) {
+      this.logger.error(`Error fetching token by name ${token}: `, error);
+      return null;
+    }
+
+    return data;
+  }
+
+  private async makeRequest(
+    endpoint: string,
+  ): Promise<{ data: any; error: string }> {
+    const BASE_URL = 'https://production-api.mobula.io/api/1';
+
+    const response = await fetch(BASE_URL + endpoint);
+
+    const { data, message } = await response.json();
+
+    return { data, error: message };
   }
 }

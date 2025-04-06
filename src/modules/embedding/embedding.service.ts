@@ -13,8 +13,8 @@ import {
   generateEnhancedSignalDescription,
   generateMarketNarratives,
 } from './helpers/market-data-formatting';
-import { TokenMarketObservation } from '../tokens/entities/token.type';
 import { TokenMarketObservationMatchResult } from '../supabase/entities/collections.type';
+import { MobulaExtendedToken } from '../mobula/entities/mobula.entities';
 
 @Injectable()
 export class EmbeddingService {
@@ -33,10 +33,10 @@ export class EmbeddingService {
   }
 
   public async generateMarketObservationEmbeddings(
-    tokenMarketObservations: TokenMarketObservation[],
+    tokens: MobulaExtendedToken[],
   ): Promise<Omit<MarketObservationEmbedding, 'id'>[]> {
-    const observationsText: string[] = tokenMarketObservations.map((obs) =>
-      this.getEmbeddingTextFromObservation(obs),
+    const observationsText: string[] = tokens.map((token) =>
+      this.getEmbeddingTextFromObservation(token),
     );
 
     const observationsEmbeddings =
@@ -49,7 +49,7 @@ export class EmbeddingService {
 
     observationsEmbeddings.forEach((observationEmbedding, i) => {
       marketObservationEmbeddings.push({
-        ...tokenMarketObservations[i],
+        ...tokens[i],
         embedding: observationEmbedding.embedding,
       });
     });
@@ -58,17 +58,16 @@ export class EmbeddingService {
   }
 
   public async createSaveEmbedding(
-    marketObservation: TokenMarketObservation,
+    token: MobulaExtendedToken,
   ): Promise<Omit<MarketObservationEmbedding, 'id'> | null> {
     try {
-      const embeddingText =
-        this.getEmbeddingTextFromObservation(marketObservation);
+      const embeddingText = this.getEmbeddingTextFromObservation(token);
 
       const embeddings = await this.createEmbeddings([embeddingText]);
 
       const marketObservationEmbedding: Omit<MarketObservationEmbedding, 'id'> =
         {
-          ...marketObservation,
+          ...token,
           embedding: embeddings[0].embedding,
         };
 
@@ -143,18 +142,13 @@ export class EmbeddingService {
     }
   }
 
-  public getEmbeddingTextFromObservation(
-    observation: TokenMarketObservation,
-  ): string {
-    const normalized = calculateNormalizedMetrics(observation);
+  public getEmbeddingTextFromObservation(token: MobulaExtendedToken): string {
+    const normalized = calculateNormalizedMetrics(token);
 
-    const narratives = generateMarketNarratives(observation, normalized);
-    const narrativeText = combineNarratives(narratives, observation);
+    const narratives = generateMarketNarratives(token, normalized);
+    const narrativeText = combineNarratives(narratives, token);
 
-    const signalText = generateEnhancedSignalDescription(
-      observation,
-      normalized,
-    );
+    const signalText = generateEnhancedSignalDescription(token, normalized);
 
     return `${narrativeText} [SIGNALS] ${signalText}`;
   }

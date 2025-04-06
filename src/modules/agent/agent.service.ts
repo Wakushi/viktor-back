@@ -4,8 +4,6 @@ import {
   calculateDecisionTypeStats,
   calculateProfitabilityScore,
 } from './helpers/decision-computation';
-
-import { TokenData } from 'src/modules/tokens/entities/token.type';
 import { TokensService } from '../tokens/tokens.service';
 import { EmbeddingService } from '../embedding/embedding.service';
 import { SupabaseService } from '../supabase/supabase.service';
@@ -18,6 +16,7 @@ import {
 import { CoinCodexBaseTokenData } from '../training/entities/coincodex.type';
 import { findClosestInt } from 'src/shared/utils/helpers';
 import { PuppeteerService } from 'src/shared/services/puppeteer.service';
+import { MobulaExtendedToken } from '../mobula/entities/mobula.entities';
 
 @Injectable()
 export class AgentService {
@@ -34,7 +33,8 @@ export class AgentService {
     try {
       this.logger.log('Started token search...');
 
-      const tokens: TokenData[] = await this.tokensService.discoverTokens();
+      const tokens: MobulaExtendedToken[] =
+        await this.tokensService.discoverTokens();
 
       this.logger.log(
         `Discovered ${tokens.length} tokens ! Starting analysis...`,
@@ -54,9 +54,9 @@ export class AgentService {
   }
 
   private async analyzeTokens(
-    tokens: TokenData[],
+    tokens: MobulaExtendedToken[],
   ): Promise<TokenAnalysisResult[]> {
-    const analysisResults: TokenAnalysisResult[] = [];
+    this.logger.log(`Initiating analysis of ${tokens.length} tokens...`);
 
     const SIMILARITY_THRESHOLD = 0.7;
     const MATCH_COUNT = 40;
@@ -70,66 +70,119 @@ export class AgentService {
       confidence: 0.1,
     };
 
-    for (const token of tokens) {
-      this.logger.log(`Analysing token ${token.metadata.name}...`);
+    const analysisResults: TokenAnalysisResult[] = [];
+
+    let batchSize = 14;
+    let batchCounter = 1;
+
+    const BATCH_SUCCESS_THRESHOLD = 5;
+    const BATCH_FAIL_THRESHOLD = -5;
+    const batchRates: Map<number, number> = new Map();
+
+    while (tokens.length) {
+      const batch = tokens.splice(0, batchSize);
+
+      this.logger.log(
+        `Analyzing token batch ${batchCounter} (${tokens.length} tokens remaining)`,
+      );
 
       try {
-        const embeddingText =
-          this.embeddingService.getEmbeddingTextFromObservation(token.market);
+        const results: TokenAnalysisResult[] = await Promise.all(
+          batch.map(async (token) => {
+            const embeddingText =
+              this.embeddingService.getEmbeddingTextFromObservation(token);
 
-        const similarConditions = await this.embeddingService.findNearestMatch({
-          query: embeddingText,
-          matchThreshold: SIMILARITY_THRESHOLD,
-          matchCount: MATCH_COUNT,
-        });
+            const similarConditions =
+              await this.embeddingService.findNearestMatch({
+                query: embeddingText,
+                matchThreshold: SIMILARITY_THRESHOLD,
+                matchCount: MATCH_COUNT,
+              });
 
-        const allDecisions = await Promise.all(
-          similarConditions.map(async (condition) => {
-            const decision =
-              await this.supabaseService.getDecisionByMarketObservationId(
-                condition.id,
-              );
+            const allDecisions = await Promise.all(
+              similarConditions.map(async (condition) => {
+                const decision =
+                  await this.supabaseService.getDecisionByMarketObservationId(
+                    condition.id,
+                  );
 
-            if (!decision) return;
+                if (!decision) return;
+
+                return {
+                  marketCondition: condition,
+                  decision,
+                  similarity: condition.similarity,
+                  profitabilityScore: calculateProfitabilityScore(decision),
+                };
+              }),
+            );
+
+            const decisions = allDecisions.filter((d) => d);
+
+            if (decisions.length === 0) return;
+
+            const decisionStats = calculateDecisionTypeStats(
+              decisions,
+              PROFITABLE_THRESHOLD,
+            );
+
+            const buyingConfidence = calculateBuyingConfidence(
+              decisions,
+              decisionStats,
+              WEIGHTS,
+            );
 
             return {
-              marketCondition: condition,
-              decision,
-              similarity: condition.similarity,
-              profitabilityScore: calculateProfitabilityScore(decision),
+              token,
+              textObservation: embeddingText,
+              buyingConfidence,
+              similarDecisionsAmount: decisions.length,
+              decisionTypeRatio: decisionStats,
             };
           }),
         );
 
-        const decisions = allDecisions.filter((d) => d);
+        analysisResults.push(...results);
+        batchCounter++;
 
-        if (decisions.length === 0) continue;
+        if (!batchRates.has(batchSize)) {
+          batchRates.set(batchSize, 0);
+        }
 
-        const decisionStats = calculateDecisionTypeStats(
-          decisions,
-          PROFITABLE_THRESHOLD,
-        );
+        const newRate = batchRates.get(batchSize) + 1;
 
-        const buyingConfidence = calculateBuyingConfidence(
-          decisions,
-          decisionStats,
-          WEIGHTS,
-        );
-
-        analysisResults.push({
-          token,
-          buyingConfidence,
-          similarDecisionsAmount: decisions.length,
-          decisionTypeRatio: decisionStats,
-        });
+        if (newRate >= BATCH_SUCCESS_THRESHOLD) {
+          batchSize++;
+          this.logger.log(`Increasing batch size to ${batchSize}`);
+          batchRates.set(batchSize, 1);
+        } else {
+          batchRates.set(batchSize, newRate);
+        }
       } catch (error) {
-        console.error(`Error analyzing token ${token.metadata.symbol}:`, error);
+        this.logger.error(error);
+
+        if (!batchRates.has(batchSize)) {
+          batchRates.set(batchSize, 0);
+        }
+
+        const newRate = batchRates.get(batchSize) - 1;
+
+        if (newRate <= BATCH_FAIL_THRESHOLD) {
+          batchSize--;
+          this.logger.log(`Decreasing batch size to ${batchSize}`);
+          batchRates.set(batchSize, 0);
+        } else {
+          batchRates.set(batchSize, newRate);
+        }
+
+        tokens.push(...batch);
       }
     }
 
     return analysisResults
       .filter((result) => {
         return (
+          result &&
           result.buyingConfidence.score >= MINIMUM_CONFIDENCE_TO_BUY &&
           result.buyingConfidence.sampleSizeConfidence >=
             MINIMUM_SAMPLE_CONFIDENCE
@@ -158,8 +211,8 @@ export class AgentService {
       this.logger.log('Fetching current prices..');
 
       const analysisTokens = analysis.analysis.map((t) => ({
-        name: t.token.metadata.name,
-        id: t.token.metadata.symbol,
+        name: t.token.name,
+        id: t.token.symbol,
       }));
 
       const currentPrices: Map<number, number[]> = new Map();
@@ -172,7 +225,6 @@ export class AgentService {
           const lowercasedNameVariant = lowercasedName.replaceAll(' ', '-');
           const lowercasedId = tokenId.id.toLowerCase();
           const lowercasedIdVariant = lowercasedId.replaceAll(' ', '-');
-
           const possibleMatches = [
             token.ccu_slug?.toLowerCase(),
             token.name?.toLowerCase(),
@@ -181,7 +233,6 @@ export class AgentService {
             token.display_symbol?.toLowerCase(),
             token.aliases?.toLowerCase(),
           ];
-
           return (
             possibleMatches.includes(lowercasedId) ||
             possibleMatches.includes(lowercasedIdVariant) ||
@@ -214,30 +265,32 @@ export class AgentService {
       for (let i = 0; i < analysis.analysis.length; i++) {
         const result = analysis.analysis[i];
 
-        const initialPrice = result.token.market.price_usd;
-
+        const initialPrice = result.token.price;
         const currentPricesFound = currentPrices.get(i) || [];
 
         let currentPrice = currentPricesFound.length
           ? findClosestInt(currentPricesFound, initialPrice)
           : initialPrice;
+
         let priceChange = currentPrice - initialPrice;
         let percentageChange = (priceChange / initialPrice) * 100;
 
         if (!currentPrice || Math.abs(percentageChange) > 90) {
           this.logger.log(
-            `Found abnormal price for ${result.token.metadata.name}, refetching price...`,
+            `Found abnormal price for ${result.token.name}, refetching price...`,
           );
 
-          currentPrice = await this.tokensService.getTokenPriceByCoinGeckoId(
-            result.token.market.coin_gecko_id,
+          const token = await this.tokensService.getTokenByMobulaId(
+            result.token.id,
           );
+
+          currentPrice = token?.price;
           priceChange = currentPrice - initialPrice;
           percentageChange = (priceChange / initialPrice) * 100;
         }
 
         performances.push({
-          token: result.token.metadata.name,
+          token: result.token.name,
           initialPrice,
           currentPrice,
           priceChange,

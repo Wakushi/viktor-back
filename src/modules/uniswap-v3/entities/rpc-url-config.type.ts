@@ -1,16 +1,12 @@
+import { MobulaChain } from 'src/modules/mobula/entities/mobula.entities';
+
 export type RpcUrlConfig = {
   mainnet: {
-    ethereum: string;
-    'arbitrum-one': string;
-    'polygon-pos': string;
-    base: string;
-    avalanche: string;
+    [MobulaChain.ETHEREUM]: string;
+    [MobulaChain.BASE]: string;
   };
   testnet: {
-    ethereum: string;
-    'arbitrum-one': string;
-    'polygon-pos': string;
-    base: string;
-    avalanche: string;
+    [MobulaChain.ETHEREUM]: string;
+    [MobulaChain.BASE]: string;
   };
 };

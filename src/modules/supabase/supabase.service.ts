@@ -6,7 +6,6 @@ import {
   QueryFunctions,
   TokenMarketObservationMatchResult,
 } from './entities/collections.type';
-import { TokenMetadata } from '../tokens/entities/token.type';
 import { TradingDecision } from '../agent/entities/trading-decision.type';
 import {
   FormattedAnalysisResult,
@@ -98,35 +97,6 @@ export class SupabaseService {
     return data ? (data as TokenMarketObservationMatchResult[]) : [];
   }
 
-  public async getTokenMetadataById(id: string): Promise<TokenMetadata | null> {
-    try {
-      const { data, error } = await this.client
-        .from(Collection.TOKEN_METADATA)
-        .select('*')
-        .eq('id', id)
-        .maybeSingle();
-
-      if (error) throw error;
-
-      return data;
-    } catch (error) {
-      console.error('Error fetching token metadata:', error);
-      return null;
-    }
-  }
-
-  public async insertTokenMetadata(metadata: TokenMetadata): Promise<void> {
-    const { error } = await this.client
-      .from(Collection.TOKEN_METADATA)
-      .upsert(metadata);
-
-    if (error) {
-      throw error;
-    }
-
-    console.log(`Inserted ${metadata.id} metadata row`);
-  }
-
   public async getTokensMetadata() {
     try {
       const { data, error } = await this.client
@@ -147,22 +117,17 @@ export class SupabaseService {
   public async getDecisionByMarketObservationId(
     marketObservationId: number,
   ): Promise<TradingDecision | null> {
-    try {
-      const { data, error } = await this.client
-        .from(Collection.TRADING_DECISIONS)
-        .select('*')
-        .eq('observation_id', marketObservationId)
-        .maybeSingle();
+    const { data, error } = await this.client
+      .from(Collection.TRADING_DECISIONS)
+      .select('*')
+      .eq('observation_id', marketObservationId)
+      .maybeSingle();
 
-      if (error) {
-        throw new SupabaseError('Failed to fetch trading decision', error);
-      }
-
-      return data;
-    } catch (error) {
-      console.error('Error fetching trading decision:', error);
-      return null;
+    if (error) {
+      throw new SupabaseError('Failed to fetch trading decision', error);
     }
+
+    return data;
   }
 
   public async insertAnalysisResult(
@@ -237,8 +202,8 @@ export class SupabaseService {
 
     results.forEach((res) => {
       formattedResults.push({
-        token: res.token.metadata.name,
-        price: `$${res.token.market.price_usd}`,
+        token: res.token.name,
+        price: `$${res.token.price}`,
         buyingConfidence: `${(res.buyingConfidence.score * 100).toFixed(2)}%`,
       });
     });
