@@ -53,7 +53,7 @@ export interface MobulaMultipleTokens {
 // /market/multi-data endpoint
 export interface MobulaMultiDataToken {
   key: string;
-  id: number;
+  token_id: number;
   timestamp?: number;
   name: string;
   symbol: string;

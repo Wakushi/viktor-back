@@ -41,14 +41,14 @@ export class MobulaService {
   }
 
   public async getTokenMarketDataById(
-    tokenId: number,
+    token_id: number,
   ): Promise<MobulaMultiDataToken | null> {
     const { data, error } = await this.makeRequest(
-      `/market/data?id=${tokenId}`,
+      `/market/data?id=${token_id}`,
     );
 
     if (error) {
-      this.logger.error(`Error fetching token by id ${tokenId}: ` + error);
+      this.logger.error(`Error fetching token by id ${token_id}: ` + error);
       return null;
     }
 

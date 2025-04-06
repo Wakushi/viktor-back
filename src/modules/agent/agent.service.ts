@@ -206,7 +206,7 @@ export class AgentService {
 
       const currentMarketData =
         await this.tokensService.getMultiTokenByMobulaIds(
-          analysis.analysis.map((data) => data.token.id),
+          analysis.analysis.map((data) => data.token.token_id),
         );
 
       this.logger.log('Computing performances..');
@@ -215,7 +215,9 @@ export class AgentService {
 
       for (let i = 0; i < analysis.analysis.length; i++) {
         const result = analysis.analysis[i];
-        const current = currentMarketData.find((t) => t.id === result.token.id);
+        const current = currentMarketData.find(
+          (t) => t.token_id === result.token.token_id,
+        );
 
         if (!current) continue;
 

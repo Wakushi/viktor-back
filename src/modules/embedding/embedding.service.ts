@@ -57,31 +57,6 @@ export class EmbeddingService {
     return marketObservationEmbeddings;
   }
 
-  public async createSaveEmbedding(
-    token: MobulaExtendedToken,
-  ): Promise<Omit<MarketObservationEmbedding, 'id'> | null> {
-    try {
-      const embeddingText = this.getEmbeddingTextFromObservation(token);
-
-      const embeddings = await this.createEmbeddings([embeddingText]);
-
-      const marketObservationEmbedding: Omit<MarketObservationEmbedding, 'id'> =
-        {
-          ...token,
-          embedding: embeddings[0].embedding,
-        };
-
-      await this.supabaseService.insertMarketObservationEmbedding(
-        marketObservationEmbedding,
-      );
-
-      return marketObservationEmbedding;
-    } catch (error: any) {
-      console.error(error);
-      return null;
-    }
-  }
-
   public async createEmbeddings(
     documents: string[],
   ): Promise<VoyageEmbeddingData[]> {

@@ -102,7 +102,7 @@ function buildObservationsFromMetrics({
 
     return {
       key: `${tokenSymbol}-${index}`,
-      id: index,
+      token_id: index,
       name: tokenSymbol,
       symbol: tokenSymbol.toUpperCase(),
       decimals: 18,

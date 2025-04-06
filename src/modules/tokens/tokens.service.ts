@@ -109,7 +109,8 @@ export class TokensService {
 
           return {
             ...token,
-            extra: tokenSocials.get(token.id),
+            timestamp: Date.now(),
+            extra: tokenSocials.get(token.token_id),
             contracts: filteredContracts,
             score: this.computeTokenScore(token),
           };
@@ -232,9 +233,9 @@ export class TokensService {
   }
 
   public async getTokenByMobulaId(
-    tokenId: number,
+    token_id: number,
   ): Promise<MobulaMultiDataToken> {
-    return await this.mobulaService.getTokenMarketDataById(tokenId);
+    return await this.mobulaService.getTokenMarketDataById(token_id);
   }
 
   public async getMultiTokenByMobulaIds(

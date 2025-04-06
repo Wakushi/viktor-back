@@ -35,15 +35,6 @@ export class SupabaseService {
     return this._client;
   }
 
-  public async insertMarketObservationEmbedding(
-    marketObservationEmbedding: Omit<MarketObservationEmbedding, 'id'>,
-  ): Promise<MarketObservationEmbedding> {
-    return this.insertSingle<MarketObservationEmbedding>(
-      Collection.MARKET_OBSERVATIONS,
-      marketObservationEmbedding,
-    );
-  }
-
   public async insertManyMarketObservationEmbedding(
     marketObservationEmbedding: Omit<MarketObservationEmbedding, 'id'>[],
   ): Promise<MarketObservationEmbedding[]> {
@@ -51,15 +42,6 @@ export class SupabaseService {
       Collection.MARKET_OBSERVATIONS,
       marketObservationEmbedding,
       { progressLabel: 'market observations' },
-    );
-  }
-
-  public async insertTradingDecision(
-    decision: Omit<TradingDecision, 'id'>,
-  ): Promise<TradingDecision> {
-    return this.insertSingle<TradingDecision>(
-      Collection.TRADING_DECISIONS,
-      decision,
     );
   }
 
