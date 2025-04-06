@@ -121,7 +121,9 @@ function buildObservationsFromMetrics({
       off_chain_volume: 0,
       is_listed: true,
       price_change_1h: 0,
-      price_change_24h: prev ? format.safeChange(price, prev.Close) : 0,
+      price_change_24h: prev
+        ? format.percentage(((price - prev.Close) / prev.Close) * 100)
+        : 0,
       price_change_7d: 0,
       price_change_1m: 0,
       price_change_1y: 0,

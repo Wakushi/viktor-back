@@ -110,20 +110,15 @@ export class PuppeteerService {
         timeout: 5000,
       });
 
-      const buttonText = await page.evaluate(() => {
+      await page.evaluate(() => {
         const button = document.querySelector(
           '.select button.button.button-primary',
         );
-        return button ? button.textContent.trim() : null;
+        if (button) {
+          button.addEventListener('click', (e) => e.preventDefault());
+          (button as HTMLElement).click();
+        }
       });
-
-      if (buttonText === 'Select') {
-        await page.click('.select button.button.button-primary');
-      } else {
-        throw new Error(
-          `Expected to find "Select" button but found "${buttonText}" instead`,
-        );
-      }
 
       await page.evaluate(
         () => new Promise((resolve) => setTimeout(resolve, 3000)),
@@ -176,6 +171,19 @@ export class PuppeteerService {
       throw error;
     } finally {
       await browser.close();
+    }
+  }
+
+  private async saveScreenshot(
+    page: puppeteer.Page,
+    name = 'screenshot',
+  ): Promise<void> {
+    try {
+      const filePath = path.resolve(process.cwd(), `${name}-${Date.now()}.png`);
+      await page.screenshot({ path: filePath, fullPage: false });
+      this.logger.log(`📸 Screenshot saved to ${filePath}`);
+    } catch (error) {
+      this.logger.error(`Failed to take screenshot: ${error.message}`);
     }
   }
 }

@@ -1,47 +1,47 @@
-create table market_observations (
-  id uuid primary key,
-  token_id numeric not null,
+CREATE TABLE market_observations (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
 
-  key text not null,
-  timestamp bigint not null,
-  name text not null,
-  symbol text not null,
-  decimals integer not null,
-  logo text,
-  rank integer,
+  token_id NUMERIC NOT NULL,
+  key TEXT NOT NULL,
+  timestamp BIGINT NOT NULL,
+  name TEXT NOT NULL,
+  symbol TEXT NOT NULL,
+  decimals INTEGER NOT NULL,
+  logo TEXT,
+  rank INTEGER,
 
-  price numeric not null,
-  market_cap numeric not null,
-  market_cap_diluted numeric,
-  volume numeric not null,
-  volume_change_24h numeric,
-  volume_7d numeric,
-  liquidity numeric,
+  price NUMERIC NOT NULL,
+  market_cap NUMERIC NOT NULL,
+  market_cap_diluted NUMERIC,
+  volume NUMERIC NOT NULL,
+  volume_change_24h NUMERIC,
+  volume_7d NUMERIC,
+  liquidity NUMERIC,
 
-  ath numeric,
-  atl numeric,
-  off_chain_volume numeric,
-  is_listed boolean default true,
+  ath NUMERIC,
+  atl NUMERIC,
+  off_chain_volume NUMERIC,
+  is_listed BOOLEAN DEFAULT TRUE,
 
-  price_change_1h numeric,
-  price_change_24h numeric,
-  price_change_7d numeric,
-  price_change_1m numeric,
-  price_change_1y numeric,
+  price_change_1h NUMERIC,
+  price_change_24h NUMERIC,
+  price_change_7d NUMERIC,
+  price_change_1m NUMERIC,
+  price_change_1y NUMERIC,
 
-  total_supply numeric,
-  circulating_supply numeric,
+  total_supply NUMERIC,
+  circulating_supply NUMERIC,
 
-  embedding vector(1024),
+  embedding VECTOR(1024),
 
-  extra jsonb default '{}'::jsonb,
-  contracts jsonb default '[]'::jsonb,
+  extra JSONB DEFAULT '{}'::jsonb,
+  contracts JSONB DEFAULT '[]'::jsonb,
 
-  created_at timestamp with time zone default now(),
+  created_at TIMESTAMPTZ DEFAULT now(),
 
-  constraint market_observations_unique_key_ts unique (key, timestamp)
+  CONSTRAINT market_observations_unique_key_ts UNIQUE (key, timestamp)
 );
 
-create index idx_market_observations_key on market_observations(key);
-create index idx_market_observations_timestamp on market_observations(timestamp);
-create index idx_market_observations_price on market_observations(price);
+CREATE INDEX idx_market_observations_key ON market_observations(key);
+CREATE INDEX idx_market_observations_timestamp ON market_observations(timestamp);
+CREATE INDEX idx_market_observations_price ON market_observations(price);
