@@ -54,7 +54,7 @@ export interface MobulaMultipleTokens {
 export interface MobulaMultiDataToken {
   key: string;
   id: number;
-  timestamp: number;
+  timestamp?: number;
   name: string;
   symbol: string;
   decimals: number;

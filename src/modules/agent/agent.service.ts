@@ -13,8 +13,7 @@ import {
   TokenAnalysisResult,
   TokenPerformance,
 } from './entities/analysis-result.type';
-import { CoinCodexBaseTokenData } from '../training/entities/coincodex.type';
-import { findClosestInt } from 'src/shared/utils/helpers';
+
 import { PuppeteerService } from 'src/shared/services/puppeteer.service';
 import { MobulaExtendedToken } from '../mobula/entities/mobula.entities';
 
@@ -203,60 +202,12 @@ export class AgentService {
 
       const analysis: Analysis = JSON.parse(formattedAnalysis.analysis);
 
-      const coinCodexData: CoinCodexBaseTokenData[] =
-        await this.fetchWithTimeout({
-          url: 'https://coincodex.com/apps/coincodex/cache/all_coins.json',
-        });
-
       this.logger.log('Fetching current prices..');
 
-      const analysisTokens = analysis.analysis.map((t) => ({
-        name: t.token.name,
-        id: t.token.symbol,
-      }));
-
-      const currentPrices: Map<number, number[]> = new Map();
-
-      for (const token of coinCodexData) {
-        if (currentPrices.size === analysisTokens.length) break;
-
-        const matchingToken = analysisTokens.find((tokenId) => {
-          const lowercasedName = tokenId.name.toLowerCase();
-          const lowercasedNameVariant = lowercasedName.replaceAll(' ', '-');
-          const lowercasedId = tokenId.id.toLowerCase();
-          const lowercasedIdVariant = lowercasedId.replaceAll(' ', '-');
-          const possibleMatches = [
-            token.ccu_slug?.toLowerCase(),
-            token.name?.toLowerCase(),
-            token.shortname?.toLowerCase(),
-            token.symbol?.toLowerCase(),
-            token.display_symbol?.toLowerCase(),
-            token.aliases?.toLowerCase(),
-          ];
-          return (
-            possibleMatches.includes(lowercasedId) ||
-            possibleMatches.includes(lowercasedIdVariant) ||
-            possibleMatches.includes(lowercasedName) ||
-            possibleMatches.includes(lowercasedNameVariant) ||
-            token.shortname.toLowerCase().includes(lowercasedName)
-          );
-        });
-
-        if (matchingToken) {
-          const index = analysisTokens.indexOf(matchingToken);
-
-          if (currentPrices.has(index)) {
-            currentPrices.set(index, [
-              ...currentPrices.get(index),
-              token.last_price_usd,
-            ]);
-          } else {
-            currentPrices.set(analysisTokens.indexOf(matchingToken), [
-              token.last_price_usd,
-            ]);
-          }
-        }
-      }
+      const currentMarketData =
+        await this.tokensService.getMultiTokenByMobulaIds(
+          analysis.analysis.map((data) => data.token.id),
+        );
 
       this.logger.log('Computing performances..');
 
@@ -264,30 +215,15 @@ export class AgentService {
 
       for (let i = 0; i < analysis.analysis.length; i++) {
         const result = analysis.analysis[i];
+        const current = currentMarketData.find((t) => t.id === result.token.id);
+
+        if (!current) continue;
 
         const initialPrice = result.token.price;
-        const currentPricesFound = currentPrices.get(i) || [];
-
-        let currentPrice = currentPricesFound.length
-          ? findClosestInt(currentPricesFound, initialPrice)
-          : initialPrice;
+        const currentPrice = current.price;
 
         let priceChange = currentPrice - initialPrice;
         let percentageChange = (priceChange / initialPrice) * 100;
-
-        if (!currentPrice || Math.abs(percentageChange) > 90) {
-          this.logger.log(
-            `Found abnormal price for ${result.token.name}, refetching price...`,
-          );
-
-          const token = await this.tokensService.getTokenByMobulaId(
-            result.token.id,
-          );
-
-          currentPrice = token?.price;
-          priceChange = currentPrice - initialPrice;
-          percentageChange = (priceChange / initialPrice) * 100;
-        }
 
         performances.push({
           token: result.token.name,
@@ -309,45 +245,6 @@ export class AgentService {
     } catch (error) {
       this.logger.error("Failed to evaluate yesterday's analysis");
       this.logger.error(error);
-    }
-  }
-
-  private async fetchWithTimeout({
-    url,
-    options = {},
-    timeout = 60000,
-  }: {
-    url: string;
-    options?: any;
-    timeout?: number;
-  }): Promise<any> {
-    const controller = new AbortController();
-    const id = setTimeout(() => controller.abort(), timeout);
-
-    try {
-      const response = await fetch(url, {
-        ...options,
-        signal: controller.signal,
-      });
-
-      if (!response.ok) {
-        throw new Error(`HTTP error: ${response.status}`);
-      }
-
-      const text = await response.text();
-
-      try {
-        return JSON.parse(text);
-      } catch (parseError) {
-        this.logger.error(`Invalid JSON received: ${parseError.message}`);
-        this.logger.error(`Error position: ${parseError.position}`);
-        this.logger.error(
-          `JSON snippet near error: ${text.substring(Math.max(0, parseError.position - 100), parseError.position + 100)}`,
-        );
-        throw parseError;
-      }
-    } finally {
-      clearTimeout(id);
     }
   }
 

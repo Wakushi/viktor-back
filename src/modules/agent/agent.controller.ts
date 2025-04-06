@@ -1,6 +1,5 @@
 import { Controller, Post, HttpCode, Get } from '@nestjs/common';
 import { AgentService } from './agent.service';
-
 import { TokenAnalysisResult } from './entities/analysis-result.type';
 import { SupabaseService } from '../supabase/supabase.service';
 

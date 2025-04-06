@@ -115,7 +115,8 @@ export class TokensService {
           };
         })
         .sort((a, b) => b.score - a.score)
-        .slice(0, limit);
+        .slice(0, limit)
+        .map(({ score, ...token }) => token);
 
       this.logger.log(`Filtering tokens without known liquidity pools..`);
 
@@ -234,5 +235,11 @@ export class TokensService {
     tokenId: number,
   ): Promise<MobulaMultiDataToken> {
     return await this.mobulaService.getTokenMarketDataById(tokenId);
+  }
+
+  public async getMultiTokenByMobulaIds(
+    tokenIds: number[],
+  ): Promise<MobulaMultiDataToken[]> {
+    return await this.mobulaService.getTokenMultiData(tokenIds);
   }
 }

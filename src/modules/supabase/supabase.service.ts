@@ -11,6 +11,7 @@ import {
   FormattedAnalysisResult,
   TokenAnalysisResult,
 } from '../agent/entities/analysis-result.type';
+import { formatAnalysisResults } from 'src/shared/utils/helpers';
 
 @Injectable()
 export class SupabaseService {
@@ -198,28 +199,8 @@ export class SupabaseService {
   ): Promise<void> {
     if (!results.length) return;
 
-    const formattedResults: any[] = [];
-
-    results.forEach((res) => {
-      formattedResults.push({
-        token: res.token.name,
-        price: `$${res.token.price}`,
-        buyingConfidence: `${(res.buyingConfidence.score * 100).toFixed(2)}%`,
-      });
-    });
-
-    await this.insertAnalysisResult({
-      analysis: JSON.stringify(
-        {
-          formattedResults,
-          analysis: results,
-        },
-        null,
-        2,
-      ),
-      created_at: new Date(),
-      fearAndGreedIndex,
-    });
+    const formattedResults = formatAnalysisResults(results, fearAndGreedIndex);
+    await this.insertAnalysisResult(formattedResults);
   }
 
   private async batchInsert<T extends object>(

@@ -28,12 +28,7 @@ export type TokenAnalysisResult = {
   textObservation: string;
   buyingConfidence: BuyingConfidenceResult;
   similarDecisionsAmount: number;
-  decisionTypeRatio: {
-    buyCount: number;
-    sellCount: number;
-    profitableBuyCount: number;
-    profitableSellCount: number;
-  };
+  decisionTypeRatio: DecisionTypeRatio;
 };
 
 export type FormattedAnalysisResult = {

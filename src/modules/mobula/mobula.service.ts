@@ -68,27 +68,25 @@ export class MobulaService {
 
     while (tokenIds.length) {
       const batch = tokenIds.splice(0, BATCH_SIZE);
-      const endpoint = `/market/multi-data?ids=${batch.join(',')}`;
+      const endpoint = `/market/multi-data?ids=${batch.join(',')}`; //
 
       this.logger.log(
         `[getTokenMultiData] Processing batch ${batchCounter} (${tokenIds.length} entries left)`,
       );
 
-      try {
-        const batchResults = await this.makeRequest(endpoint);
+      const { data, error } = await this.makeRequest(endpoint);
 
+      if (error) {
+        this.logger.error('Error fetching token multi-data :', error);
+        tokenIds.push(...batch);
+      } else {
         results.push(
           ...Array.from(
-            Object.values(batchResults).map(
-              (token) => token as MobulaMultiDataToken,
-            ),
+            Object.values(data).map((token) => token as MobulaMultiDataToken),
           ),
         );
 
         batchCounter++;
-      } catch (error) {
-        console.error('Error fetching token multi-data :', error);
-        tokenIds.push(...batch);
       }
     }
 

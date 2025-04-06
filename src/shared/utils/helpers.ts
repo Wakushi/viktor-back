@@ -1,4 +1,8 @@
 import { ethers } from 'ethers';
+import {
+  FormattedAnalysisResult,
+  TokenAnalysisResult,
+} from 'src/modules/agent/entities/analysis-result.type';
 
 export function generateRequestId(uuid: string): string {
   return ethers.keccak256(ethers.solidityPacked(['string'], [uuid]));
@@ -47,4 +51,32 @@ export function findClosestInt(arr: number[], target: number): number {
   return arr.reduce((prev, curr) =>
     Math.abs(curr - target) < Math.abs(prev - target) ? curr : prev,
   );
+}
+
+export function formatAnalysisResults(
+  results: TokenAnalysisResult[],
+  fearAndGreedIndex: string,
+): Omit<FormattedAnalysisResult, 'id'> {
+  const formattedResults: any[] = [];
+
+  results.forEach((res) => {
+    formattedResults.push({
+      token: res.token.name,
+      price: `$${res.token.price}`,
+      buyingConfidence: `${(res.buyingConfidence.score * 100).toFixed(2)}%`,
+    });
+  });
+
+  return {
+    analysis: JSON.stringify(
+      {
+        formattedResults,
+        analysis: results,
+      },
+      null,
+      2,
+    ),
+    created_at: new Date(),
+    fearAndGreedIndex,
+  };
 }
