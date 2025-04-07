@@ -4,7 +4,7 @@ create or replace function match_market_observations (
   match_count int
 )
 returns table (
-  id text,
+  id uuid,
   key text,
   name text,
   symbol text,
@@ -30,35 +30,35 @@ returns table (
   similarity float
 )
 language sql stable
-set statement_timeout = '30s'
+set search_path = public, extensions
 as $$
   select
-    market_observations.id,
-    market_observations.key,
-    market_observations.name,
-    market_observations.symbol,
-    market_observations."timestamp",
-    market_observations.price,
-    market_observations.market_cap,
-    market_observations.market_cap_diluted,
-    market_observations.volume,
-    market_observations.volume_change_24h,
-    market_observations.volume_7d,
-    market_observations.liquidity,
-    market_observations.ath,
-    market_observations.atl,
-    market_observations.off_chain_volume,
-    market_observations.is_listed,
-    market_observations.price_change_1h,
-    market_observations.price_change_24h,
-    market_observations.price_change_7d,
-    market_observations.price_change_1m,
-    market_observations.price_change_1y,
-    market_observations.total_supply,
-    market_observations.circulating_supply,
-    1 - (market_observations.embedding <=> query_embedding) as similarity
-  from market_observations
-  where 1 - (market_observations.embedding <=> query_embedding) > match_threshold
+    mo.id,
+    mo.key,
+    mo.name,
+    mo.symbol,
+    mo."timestamp",
+    mo.price,
+    mo.market_cap,
+    mo.market_cap_diluted,
+    mo.volume,
+    mo.volume_change_24h,
+    mo.volume_7d,
+    mo.liquidity,
+    mo.ath,
+    mo.atl,
+    mo.off_chain_volume,
+    mo.is_listed,
+    mo.price_change_1h,
+    mo.price_change_24h,
+    mo.price_change_7d,
+    mo.price_change_1m,
+    mo.price_change_1y,
+    mo.total_supply,
+    mo.circulating_supply,
+    1 - (mo.embedding::vector <=> query_embedding::vector) as similarity
+  from market_observations mo
+  where 1 - (mo.embedding::vector <=> query_embedding::vector) > match_threshold
   order by similarity desc
   limit match_count;
 $$;

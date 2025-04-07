@@ -16,11 +16,7 @@ export class AgentController {
     const analysisResults: TokenAnalysisResult[] =
       await this.agentService.seekMarketBuyingTargets();
 
-    console.log('Fetching fear and greed index..');
-
     const fearAndGreedIndex = await this.agentService.getFearAndGreed();
-
-    console.log('Saving results..');
 
     this.supabaseService.saveAnalysisResults(
       analysisResults,
