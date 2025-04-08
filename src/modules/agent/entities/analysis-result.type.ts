@@ -36,7 +36,7 @@ export type FormattedAnalysisResult = {
   analysis: string;
   created_at: Date | string;
   performance?: string;
-  fearAndGreedIndex?: string;
+  fear_and_greed_index?: string;
 };
 
 export type BuyingConfidenceMetrics = {

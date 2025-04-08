@@ -77,7 +77,7 @@ export function formatAnalysisResults(
       2,
     ),
     created_at: new Date(),
-    fearAndGreedIndex,
+    fear_and_greed_index: fearAndGreedIndex,
   };
 }
 
