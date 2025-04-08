@@ -13,7 +13,7 @@ export class CronService {
     private readonly agentService: AgentService,
   ) {}
 
-  @Cron(CronExpression.EVERY_DAY_AT_9AM)
+  @Cron(CronExpression.EVERY_DAY_AT_7AM)
   async handleAnalysisJob() {
     const start = Date.now();
 
@@ -34,7 +34,10 @@ export class CronService {
 
     this.logger.log('Saving results..');
 
-    this.supabaseService.saveAnalysisResults(analysisResults, fearAndGreedIndex);
+    this.supabaseService.saveAnalysisResults(
+      analysisResults,
+      fearAndGreedIndex,
+    );
 
     const duration = Date.now() - start;
     this.logger.log(`Analysis task completed in ${duration}ms`);
