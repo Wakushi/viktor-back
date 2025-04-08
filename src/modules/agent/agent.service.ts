@@ -201,6 +201,8 @@ export class AgentService {
       const formattedAnalysis =
         await this.supabaseService.getAnalysisResultsByDate(date || yesterday);
 
+      if (!formattedAnalysis) return;
+
       const analysis: Analysis = JSON.parse(formattedAnalysis.analysis);
 
       this.logger.log('Fetching current prices..');

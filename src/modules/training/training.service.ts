@@ -181,8 +181,7 @@ export class TrainingService {
   private async getCoinCodexIdentifier(tokenSymbol: string): Promise<string> {
     const url = 'https://coincodex.com/apps/coincodex/cache/all_coins.json';
 
-    const response = await fetch(url);
-    const data: CoinCodexBaseTokenData[] = await response.json();
+    const data: CoinCodexBaseTokenData[] = await this.fetchWithTimeout({ url });
 
     const matchings = data.filter(
       (t) =>
@@ -196,5 +195,44 @@ export class TrainingService {
     console.log('Identified token :', token);
 
     return token ? token.symbol : '';
+  }
+
+  private async fetchWithTimeout({
+    url,
+    options = {},
+    timeout = 60000,
+  }: {
+    url: string;
+    options?: any;
+    timeout?: number;
+  }): Promise<any> {
+    const controller = new AbortController();
+    const id = setTimeout(() => controller.abort(), timeout);
+
+    try {
+      const response = await fetch(url, {
+        ...options,
+        signal: controller.signal,
+      });
+
+      if (!response.ok) {
+        throw new Error(`HTTP error: ${response.status}`);
+      }
+
+      const text = await response.text();
+
+      try {
+        return JSON.parse(text);
+      } catch (parseError) {
+        this.logger.error(`Invalid JSON received: ${parseError.message}`);
+        this.logger.error(`Error position: ${parseError.position}`);
+        this.logger.error(
+          `JSON snippet near error: ${text.substring(Math.max(0, parseError.position - 100), parseError.position + 100)}`,
+        );
+        throw parseError;
+      }
+    } finally {
+      clearTimeout(id);
+    }
   }
 }
