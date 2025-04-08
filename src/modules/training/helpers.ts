@@ -102,11 +102,11 @@ function buildObservationsFromMetrics({
 
     return {
       key: `${tokenSymbol}-${index}`,
-      token_id: index,
+      token_id: 0,
       name: tokenSymbol,
       symbol: tokenSymbol.toUpperCase(),
       decimals: 18,
-      logo: '',
+      logo: 'training',
       rank: 0,
       price,
       market_cap: marketCap,

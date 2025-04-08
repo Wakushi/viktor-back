@@ -12,6 +12,7 @@ import {
   TokenAnalysisResult,
 } from '../agent/entities/analysis-result.type';
 import { formatAnalysisResults } from 'src/shared/utils/helpers';
+import { MobulaExtendedToken } from '../mobula/entities/mobula.entities';
 
 @Injectable()
 export class SupabaseService {
@@ -183,6 +184,54 @@ export class SupabaseService {
 
     const formattedResults = formatAnalysisResults(results, fearAndGreedIndex);
     await this.insertAnalysisResult(formattedResults);
+  }
+
+  public async getMarketObservationsByToken(
+    symbol: string,
+  ): Promise<MobulaExtendedToken[]> {
+    const { data, error } = await this.client
+      .from(Collection.MARKET_OBSERVATIONS)
+      .select(
+        `
+    id,
+    key,
+    timestamp,
+    name,
+    symbol,
+    decimals,
+    logo,
+    rank,
+    price,
+    market_cap,
+    market_cap_diluted,
+    volume,
+    volume_change_24h,
+    volume_7d,
+    liquidity,
+    ath,
+    atl,
+    off_chain_volume,
+    is_listed,
+    price_change_1h,
+    price_change_24h,
+    price_change_7d,
+    price_change_1m,
+    price_change_1y,
+    total_supply,
+    circulating_supply,
+    extra,
+    contracts,
+    created_at,
+    token_id
+  `,
+      )
+      .eq('name', symbol);
+
+    if (error) {
+      throw new SupabaseError('Failed to fetch trading decision', error);
+    }
+
+    return data;
   }
 
   private async batchInsert<T extends object>(

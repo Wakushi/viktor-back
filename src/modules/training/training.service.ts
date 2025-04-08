@@ -36,15 +36,33 @@ export class TrainingService {
         const tokenSymbol = await this.getCoinCodexIdentifier(tokenName);
 
         if (!tokenSymbol) {
-          this.logger.log('No token found for symbol ' + tokenSymbol);
+          this.logger.log('No token found for name ' + tokenName);
           continue;
         }
 
         this.logger.log('Found token symbol ' + tokenSymbol);
 
+        let fromTimestamp = 0;
+
+        const history =
+          await this.supabaseService.getMarketObservationsByToken(tokenSymbol);
+
+        if (history?.length) {
+          const trainingData = history.filter(
+            (token) => token.logo === 'training',
+          );
+
+          trainingData?.sort((a, b) => b.timestamp - a.timestamp);
+
+          fromTimestamp = trainingData[0].timestamp;
+        }
+
         this.logger.log('Downloading historical data...');
 
-        await this.puppeteerService.downloadCoinCodexCsv(tokenName);
+        await this.puppeteerService.downloadCoinCodexCsv(
+          tokenName,
+          fromTimestamp,
+        );
 
         this.logger.log('Saving metrics..');
 
@@ -168,7 +186,9 @@ export class TrainingService {
 
     const matchings = data.filter(
       (t) =>
-        t.shortname && t.shortname.toLowerCase() === tokenSymbol.toLowerCase(),
+        (t.symbol && t.symbol.toLowerCase() === tokenSymbol.toLowerCase()) ||
+        (t.shortname &&
+          t.shortname.toLowerCase() === tokenSymbol.toLowerCase()),
     );
 
     const token = matchings[0];

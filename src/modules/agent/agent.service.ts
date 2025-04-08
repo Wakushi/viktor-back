@@ -71,7 +71,7 @@ export class AgentService {
 
     const analysisResults: TokenAnalysisResult[] = [];
 
-    let batchSize = 14;
+    let batchSize = 5;
     let batchCounter = 1;
 
     const BATCH_SUCCESS_THRESHOLD = 5;
@@ -174,6 +174,7 @@ export class AgentService {
           batchRates.set(batchSize, newRate);
         }
 
+        this.logger.warn(`Adding back back ${batch.length} tokens to pool..`);
         tokens.push(...batch);
       }
     }

@@ -2,6 +2,7 @@ import { Injectable, Logger } from '@nestjs/common';
 import * as puppeteer from 'puppeteer';
 import * as fs from 'fs';
 import * as path from 'path';
+import { formatDateToDDMMYYYY } from '../utils/helpers';
 
 @Injectable()
 export class PuppeteerService {
@@ -38,7 +39,10 @@ export class PuppeteerService {
     }
   }
 
-  public async downloadCoinCodexCsv(tokenSymbol: string): Promise<string> {
+  public async downloadCoinCodexCsv(
+    tokenSymbol: string,
+    fromTimestamp: number,
+  ): Promise<string> {
     const browser = await puppeteer.launch({
       headless: true,
       args: ['--no-sandbox', '--disable-setuid-sandbox'],
@@ -104,21 +108,29 @@ export class PuppeteerService {
         },
       );
 
-      await firstInput.type('01011970');
+      const formattedStartDate = fromTimestamp
+        ? formatDateToDDMMYYYY(new Date(fromTimestamp))
+        : '01011970';
+
+      await firstInput.type(formattedStartDate);
 
       await page.waitForSelector('.select button.button.button-primary', {
         timeout: 5000,
       });
 
-      await page.evaluate(() => {
-        const button = document.querySelector(
-          '.select button.button.button-primary',
-        );
-        if (button) {
-          button.addEventListener('click', (e) => e.preventDefault());
-          (button as HTMLElement).click();
-        }
-      });
+      const selectButton = await page.waitForSelector(
+        '.select button.button.button-primary',
+        {
+          timeout: 5000,
+          visible: true,
+        },
+      );
+
+      if (!selectButton) {
+        throw new Error('Select button not found');
+      }
+
+      await selectButton.click();
 
       await page.evaluate(
         () => new Promise((resolve) => setTimeout(resolve, 3000)),
