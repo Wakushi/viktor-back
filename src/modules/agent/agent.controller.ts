@@ -28,9 +28,10 @@ export class AgentController {
 
   @Get('analysis')
   @HttpCode(200)
-  async getAnalysisHistory(@Query() { fromCloud }: { fromCloud: boolean }) {
-    const results = await this.supabaseService.getAnalysisResults(fromCloud);
+  async getAnalysisHistory(@Query() query: { fromCloud?: string }) {
+    const fromCloud = query.fromCloud === 'true';
 
+    const results = await this.supabaseService.getAnalysisResults(fromCloud);
     if (!results) return;
 
     const formattedResults = results.map((res) => ({
@@ -41,7 +42,6 @@ export class AgentController {
 
     return formattedResults;
   }
-
   @Get('ping')
   @HttpCode(200)
   async ping() {
