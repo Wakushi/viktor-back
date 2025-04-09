@@ -17,19 +17,26 @@ import { MobulaExtendedToken } from '../mobula/entities/mobula.entities';
 @Injectable()
 export class SupabaseService {
   private _client: SupabaseClient<any, 'public', any>;
+  private _cloudClient: SupabaseClient<any, 'public', any>;
 
   private readonly BATCH_SIZE = 100;
 
   constructor(
     @Inject('SUPABASE_CONFIG')
-    private readonly config: { privateKey: string; url: string },
+    private readonly config: {
+      privateKey: string;
+      url: string;
+      cloudPrivateKey: string;
+      cloudUrl: string;
+    },
   ) {
-    const { privateKey, url } = config;
+    const { privateKey, url, cloudPrivateKey, cloudUrl } = config;
 
     if (!privateKey) throw new Error(`Expected env var SUPABASE_API_KEY`);
     if (!url) throw new Error(`Expected env var SUPABASE_URL`);
 
     this._client = createClient(url, privateKey);
+    this._cloudClient = createClient(cloudUrl, cloudPrivateKey);
   }
 
   private get client(): SupabaseClient<any, 'public', any> {
@@ -123,9 +130,13 @@ export class SupabaseService {
     );
   }
 
-  public async getAnalysisResults(): Promise<FormattedAnalysisResult[] | null> {
+  public async getAnalysisResults(
+    fromCloud = false,
+  ): Promise<FormattedAnalysisResult[] | null> {
+    const client = fromCloud ? this._cloudClient : this.client;
+
     try {
-      const { data, error } = await this.client
+      const { data, error } = await client
         .from(Collection.ANALYSIS_RESULTS)
         .select('*');
 

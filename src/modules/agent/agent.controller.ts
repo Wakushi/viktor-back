@@ -1,4 +1,4 @@
-import { Controller, Post, HttpCode, Get } from '@nestjs/common';
+import { Controller, Post, HttpCode, Get, Query } from '@nestjs/common';
 import { AgentService } from './agent.service';
 import { TokenAnalysisResult } from './entities/analysis-result.type';
 import { SupabaseService } from '../supabase/supabase.service';
@@ -28,8 +28,8 @@ export class AgentController {
 
   @Get('analysis')
   @HttpCode(200)
-  async getAnalysisHistory() {
-    const results = await this.supabaseService.getAnalysisResults();
+  async getAnalysisHistory(@Query() { fromCloud }: { fromCloud: boolean }) {
+    const results = await this.supabaseService.getAnalysisResults(fromCloud);
 
     if (!results) return;
 
