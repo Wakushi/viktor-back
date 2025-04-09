@@ -15,7 +15,16 @@ import {
 } from './entities/analysis-result.type';
 
 import { PuppeteerService } from 'src/shared/services/puppeteer.service';
-import { MobulaExtendedToken } from '../mobula/entities/mobula.entities';
+import {
+  MobulaExtendedToken,
+  SwapTransaction,
+} from '../mobula/entities/mobula.entities';
+import { MobulaService } from '../mobula/mobula.service';
+import { getAddress } from 'viem';
+import {
+  BLACKLISTED_ADDRESSES,
+  SUPPORTED_CHAIN_IDS,
+} from '../mobula/constants';
 
 @Injectable()
 export class AgentService {
@@ -26,6 +35,7 @@ export class AgentService {
     private readonly embeddingService: EmbeddingService,
     private readonly supabaseService: SupabaseService,
     private readonly puppeteerService: PuppeteerService,
+    private readonly mobulaService: MobulaService,
   ) {}
 
   public async seekMarketBuyingTargets(): Promise<TokenAnalysisResult[]> {
@@ -174,7 +184,7 @@ export class AgentService {
           batchRates.set(batchSize, newRate);
         }
 
-        this.logger.warn(`Adding back back ${batch.length} tokens to pool..`);
+        this.logger.warn(`Adding back ${batch.length} tokens to pool..`);
         tokens.push(...batch);
       }
     }
@@ -207,10 +217,12 @@ export class AgentService {
 
       this.logger.log('Fetching current prices..');
 
+      const tokenIds = analysis.analysis
+        .map((data) => data.token.token_id)
+        .filter(Boolean);
+
       const currentMarketData =
-        await this.tokensService.getMultiTokenByMobulaIds(
-          analysis.analysis.map((data) => data.token.token_id),
-        );
+        await this.tokensService.getMultiTokenByMobulaIds(tokenIds);
 
       this.logger.log('Computing performances..');
 
@@ -219,7 +231,7 @@ export class AgentService {
       for (let i = 0; i < analysis.analysis.length; i++) {
         const result = analysis.analysis[i];
         const current = currentMarketData.find(
-          (t) => t.token_id === result.token.token_id,
+          (t) => t.id === result.token.token_id,
         );
 
         if (!current) continue;
@@ -256,4 +268,197 @@ export class AgentService {
   public async getFearAndGreed(): Promise<string> {
     return await this.puppeteerService.getFearAndGreed();
   }
+
+  public async compareTradersActivity(
+    analysis: TokenAnalysisResult[],
+  ): Promise<any> {
+    const traders = await this.mobulaService.getSmartMoney();
+    const tradersAddresses = traders.map((t) => getAddress(t.wallet_address));
+
+    const analysisTokens = analysis.map((a) => ({
+      name: a.token.name,
+      tokenId: a.token.token_id,
+      contracts: a.token.contracts,
+    }));
+
+    const tokenTradeRatio: Map<number, { bought: number; sold: number }> =
+      new Map();
+
+    this.logger.log(
+      `Starting trader analysis for ${tradersAddresses.length} traders...`,
+    );
+
+    const ONE_DAY_MS = 24 * 60 * 60 * 1000;
+    const scanStart = Date.now() - 2 * ONE_DAY_MS;
+
+    await Promise.all(
+      tradersAddresses.map(async (trader) => {
+        if (BLACKLISTED_ADDRESSES.includes(trader)) return;
+
+        const trades = await this.mobulaService.getWalletTrades({
+          wallet: trader,
+          limit: 100,
+        });
+
+        if (!trades) return;
+
+        for (const trade of trades) {
+          if (!SUPPORTED_CHAIN_IDS.includes(trade.chain_id)) continue;
+
+          const tradeDate = new Date(trade.date);
+
+          if (tradeDate.getTime() < scanStart) continue;
+
+          const token0 = getAddress(trade.token0_address);
+          const token1 = getAddress(trade.token1_address);
+          const tradeTokens = [token0, token1];
+
+          const tokenMatch = analysisTokens.find((t) =>
+            t.contracts.some((c) =>
+              tradeTokens.includes(getAddress(c.address)),
+            ),
+          );
+
+          if (!tokenMatch) continue;
+
+          const contract = tokenMatch.contracts.find((c) => {
+            const contractAddress = getAddress(c.address);
+            return contractAddress === token0 || contractAddress === token1;
+          });
+
+          const tokenAmountTraded =
+            getAddress(contract.address) === token0
+              ? trade.amount0
+              : trade.amount1;
+
+          const hasBought = Number(tokenAmountTraded) > 0;
+
+          const tokenRatio = tokenTradeRatio.get(tokenMatch.tokenId);
+
+          if (!tokenRatio) {
+            tokenTradeRatio.set(tokenMatch.tokenId, {
+              bought: hasBought ? 1 : 0,
+              sold: hasBought ? 0 : 1,
+            });
+            continue;
+          }
+
+          if (hasBought) {
+            tokenRatio.bought++;
+          } else {
+            tokenRatio.sold++;
+          }
+        }
+      }),
+    );
+
+    console.log('tokenTradeRatio: ', tokenTradeRatio);
+
+    // tokenTradeRatio:  Map(10) {
+    //   100007238 => { bought: 0, sold: 1 },
+    //   102499549 => { bought: 14, sold: 17 },
+    //   10486 => { bought: 2, sold: 2 },
+    //   100001656 => { bought: 3, sold: 5 },
+    //   540 => { bought: 0, sold: 14 },
+    //   102503855 => { bought: 18, sold: 25 },
+    //   3774 => { bought: 1, sold: 1 },
+    //   102502670 => { bought: 1, sold: 0 },
+    //   100635869 => { bought: 1, sold: 1 },
+    //   100002460 => { bought: 1, sold: 0 }
+    // }
+  }
+
+  public async performTrades(analysis: TokenAnalysisResult[]): Promise<void> {
+    // Fetch trading wallet balance
+  }
+
+  public async analyzeWarpcastPresence(
+    analysis: TokenAnalysisResult[],
+    limit = 100,
+  ): Promise<void> {
+    const BASE_CHANNEL_URL = 'https://onchainsummer.xyz';
+    const FARCASTER_CHANNEL_URL =
+      'chain://eip155:7777777/erc721:0x4f86113fc3e9783cf3ec9a552cbb566716a57628';
+
+    const urls = [
+      `https://hub.pinata.cloud/v1/castsByParent?url=${FARCASTER_CHANNEL_URL}&reverse=true&pageSize=${limit}`,
+      `https://hub.pinata.cloud/v1/castsByParent?url=${BASE_CHANNEL_URL}&reverse=true&pageSize=${limit}`,
+    ];
+
+    const responses = await Promise.all(urls.map((url) => fetch(url)));
+
+    const allMessagesText: string[] = [];
+
+    for (const response of responses) {
+      if (!response.ok) {
+        this.logger.error('Error fetching Warpcast data..');
+        continue;
+      }
+
+      const { messages } = await response.json();
+      const texts = messages.map((m: FarcasterCast) => m.data.castAddBody.text);
+      allMessagesText.push(...texts);
+    }
+
+    const analysisTokens = analysis.map((a) => ({
+      tokenId: a.token.token_id,
+      name: a.token.name,
+      symbol: a.token.symbol,
+    }));
+
+    const tokenMentions: Map<number, string[]> = new Map();
+
+    for (const message of allMessagesText) {
+      const formatted = message.toLowerCase().replace(/\n/g, '');
+      const words = formatted.split(' ');
+
+      for (const token of analysisTokens) {
+        const { tokenId, name, symbol } = token;
+
+        if (
+          !words.includes(name.toLowerCase()) &&
+          !words.includes(`$${symbol.toLowerCase()}`)
+        ) {
+          continue;
+        }
+
+        const mentions = tokenMentions.get(tokenId);
+
+        if (!mentions) {
+          tokenMentions.set(tokenId, [message]);
+          continue;
+        }
+
+        tokenMentions.set(tokenId, [...mentions, message]);
+      }
+    }
+
+    // TO-DO Analyze each token mentions using a LLM to extract a global sentiment
+    console.log('tokenMentions: ', tokenMentions);
+  }
+}
+
+export interface FarcasterCast {
+  data: {
+    type: 'MESSAGE_TYPE_CAST_ADD';
+    fid: number;
+    timestamp: number;
+    network: 'FARCASTER_NETWORK_MAINNET' | string;
+    castAddBody: {
+      embedsDeprecated: any[];
+      mentions: number[];
+      parentUrl: string;
+      text: string;
+      mentionsPositions: number[];
+      embeds: {
+        url: string;
+      }[];
+      type: 'LONG_CAST' | string;
+    };
+  };
+  hash: string;
+  hashScheme: 'HASH_SCHEME_BLAKE3' | string;
+  signature: string;
+  signatureScheme: 'SIGNATURE_SCHEME_ED25519' | string;
+  signer: string;
 }

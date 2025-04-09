@@ -102,17 +102,20 @@ export class TokensService {
       );
 
       const scoredTokens: MobulaExtendedToken[] = extendedTokens
-        .map((token) => {
-          const filteredContracts = token.contracts.filter((contract) =>
+        .map((extendedToken) => {
+          const filteredContracts = extendedToken.contracts.filter((contract) =>
             WHITELISTED_CHAINS.includes(contract.blockchain),
           );
 
+          const { id, ...token } = extendedToken;
+
           return {
             ...token,
+            token_id: id,
             timestamp: Date.now(),
-            extra: tokenSocials.get(token.token_id),
+            extra: tokenSocials.get(extendedToken.id),
             contracts: filteredContracts,
-            score: this.computeTokenScore(token),
+            score: this.computeTokenScore(extendedToken),
           };
         })
         .sort((a, b) => b.score - a.score)
@@ -241,6 +244,7 @@ export class TokensService {
   public async getMultiTokenByMobulaIds(
     tokenIds: number[],
   ): Promise<MobulaMultiDataToken[]> {
+    if (!tokenIds || !tokenIds.length) return [];
     return await this.mobulaService.getTokenMultiData(tokenIds);
   }
 }

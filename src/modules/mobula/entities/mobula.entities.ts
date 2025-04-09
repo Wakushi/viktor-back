@@ -3,6 +3,7 @@ import { Address } from 'viem';
 export enum MobulaChain {
   ETHEREUM = 'Ethereum',
   BASE = 'Base',
+  SOLANA = 'Solana',
 }
 
 export type MobulaTokenPriceHistory = {
@@ -52,6 +53,7 @@ export interface MobulaMultipleTokens {
 
 // /market/multi-data endpoint
 export interface MobulaMultiDataToken {
+  id?: number;
   key: string;
   token_id: number;
   timestamp?: number;
@@ -82,7 +84,7 @@ export interface MobulaMultiDataToken {
 }
 
 export interface MobulaExtendedToken extends MobulaMultiDataToken {
-  extra: MobulaTokenSocials;
+  extra?: MobulaTokenSocials;
 }
 
 export interface MobulaTokenSocials {
@@ -154,4 +156,48 @@ export interface TokenContract {
   blockchainId: string;
   blockchain: MobulaChain;
   decimals: number;
+}
+
+export interface TokenDistribution {
+  '10x+': number;
+  '4x - 10x': number;
+  '2x - 4x': number;
+  '10% - 2x': number;
+  '-10% - 10%': number;
+  '-50% - -10%': number;
+  '-100% - -50%': number;
+}
+
+export interface TopToken {
+  [tokenSymbol: string]: number;
+}
+
+export interface WalletStats {
+  wallet_address: string;
+  realized_pnl: number;
+  unrealized_pnl: number;
+  txns_count: number;
+  volume: number;
+  blockchains: string[];
+  win_rate: number;
+  tokens_distribution: TokenDistribution;
+  top_3_tokens: TopToken[];
+}
+
+export interface SwapTransaction {
+  chain_id: string;
+  swap_type: 'REGULAR' | string;
+  raw_amount0: string;
+  raw_amount1: string;
+  amount0: string;
+  amount1: string;
+  ratio: number;
+  price_usd_token0: number;
+  price_usd_token1: number;
+  date: string;
+  amount_usd: number;
+  pool_address: string;
+  token0_address: string;
+  token1_address: string;
+  transaction_sender_address: string;
 }

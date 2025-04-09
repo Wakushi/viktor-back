@@ -1,11 +1,15 @@
 import { Inject, Injectable, Logger } from '@nestjs/common';
 import {
+  MobulaChain,
   MobulaMultiDataToken,
   MobulaMultipleTokens,
   MobulaSingleToken,
   MobulaTokenPriceHistory,
   MobulaTokenQueryParams,
+  SwapTransaction,
+  WalletStats,
 } from './entities/mobula.entities';
+import { Address } from 'viem';
 
 // Chains
 // https://docs.mobula.io/blockchains/intro-blockchains
@@ -138,6 +142,57 @@ export class MobulaService {
 
     if (error) {
       this.logger.error(`Error fetching token by name ${token}: `, error);
+      return null;
+    }
+
+    return data;
+  }
+
+  public async getSmartMoney(): Promise<WalletStats[] | null> {
+    const { data, error } = await this.makeRequest('/wallet/smart-money');
+
+    if (error) {
+      this.logger.error('Error fetching smart money', error);
+      return null;
+    }
+
+    const filteredWallets: WalletStats[] = data
+      .filter(
+        (w: WalletStats) =>
+          !w.blockchains.includes(MobulaChain.SOLANA) &&
+          (w.blockchains.includes(MobulaChain.ETHEREUM) ||
+            w.blockchains.includes(MobulaChain.BASE)) &&
+          w.realized_pnl,
+      )
+      .sort(
+        (a, b) =>
+          b.realized_pnl +
+          b.unrealized_pnl -
+          (a.realized_pnl + a.unrealized_pnl),
+      );
+
+    return filteredWallets;
+  }
+
+  public async getWalletTrades({
+    wallet,
+    order = 'desc',
+    limit = 100,
+    offset = 0,
+    page = 1,
+  }: {
+    wallet: Address;
+    order?: 'asc' | 'desc';
+    limit?: number;
+    offset?: number;
+    page?: number;
+  }): Promise<SwapTransaction[] | null> {
+    const { data, error } = await this.makeRequest(
+      `/wallet/trades?limit=${limit}&offset=${offset}&page=${page}&wallet=${wallet}&order=${order}`,
+    );
+
+    if (error) {
+      this.logger.error(`Error fetching ${wallet} trades: ` + error);
       return null;
     }
 
