@@ -1,4 +1,4 @@
-import { Inject, Injectable } from '@nestjs/common';
+import { Inject, Injectable, Logger } from '@nestjs/common';
 import {
   VoyageClient,
   VoyageConfig,
@@ -15,9 +15,12 @@ import {
 } from './helpers/market-data-formatting';
 import { TokenMarketObservationMatchResult } from '../supabase/entities/collections.type';
 import { MobulaExtendedToken } from '../mobula/entities/mobula.entities';
+import { SimilarWeekObservation } from '../analysis/entities/week-observation.type';
 
 @Injectable()
 export class EmbeddingService {
+  private readonly logger = new Logger(EmbeddingService.name);
+
   private voyageClient: VoyageClient;
 
   constructor(
@@ -73,7 +76,11 @@ export class EmbeddingService {
 
       const embeddingResults: VoyageEmbeddingData[] = [];
 
+      let batchCounter = 1;
+
       for (const batch of batches) {
+        this.logger.log(`Embedding batch ${batchCounter}/${batches.length}`);
+
         const requestBody = {
           input: batch,
           model: this.voyageClient.model || 'voyage-3',
@@ -109,6 +116,7 @@ export class EmbeddingService {
         }
 
         embeddingResults.push(...voyageResponse.data);
+        batchCounter++;
       }
 
       return embeddingResults;
@@ -167,6 +175,51 @@ export class EmbeddingService {
 
       throw new Error(
         `Unexpected error in findNearestMatch: ${
+          error instanceof Error ? error.message : 'Unknown error'
+        }`,
+      );
+    }
+  }
+
+  public async findClosestWeekObservation({
+    query,
+    matchThreshold,
+    matchCount,
+  }: {
+    query: any;
+    matchThreshold: number;
+    matchCount: number;
+  }): Promise<SimilarWeekObservation[]> {
+    try {
+      this.verifyQuery(query);
+
+      const embeddings = await this.createEmbeddings([query]);
+
+      if (!embeddings || embeddings.length === 0) {
+        throw new ValidationError('No embeddings generated for query');
+      }
+
+      const matchingWeekObservations =
+        await this.supabaseService.matchWeekObservations({
+          queryEmbedding: embeddings[0].embedding,
+          matchThreshold,
+          matchCount,
+        });
+
+      return matchingWeekObservations;
+    } catch (error) {
+      console.error('Error in findClosestWeekObservation:', error);
+
+      if (
+        error instanceof ValidationError ||
+        error instanceof VoyageAPIError ||
+        error instanceof SupabaseError
+      ) {
+        throw error;
+      }
+
+      throw new Error(
+        `Unexpected error in findClosestWeekObservation: ${
           error instanceof Error ? error.message : 'Unknown error'
         }`,
       );

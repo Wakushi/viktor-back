@@ -110,7 +110,7 @@ export interface CoinCodexTokenData {
   socials: TokenSocialLink[];
 }
 
-export interface CoinCodexCsvDailyMetrics {
+export interface DailyOHLCV {
   Start: string;
   End: string;
   Open: number;

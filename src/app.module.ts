@@ -15,6 +15,7 @@ import { ScheduleModule } from '@nestjs/schedule';
 import { CronModule } from './modules/cron/cron.module';
 import { MobulaModule } from './modules/mobula/mobula.module';
 import { MobulaChain } from './modules/mobula/entities/mobula.entities';
+import { AnalysisModule } from './modules/analysis/analysis.module';
 
 @Module({
   imports: [
@@ -61,6 +62,7 @@ import { MobulaChain } from './modules/mobula/entities/mobula.entities';
     MobulaModule.forRoot({
       apiKey: process.env.MOBULA_API_KEY,
     }),
+    AnalysisModule,
   ],
 })
 export class AppModule {

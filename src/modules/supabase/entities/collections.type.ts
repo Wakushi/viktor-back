@@ -5,10 +5,12 @@ export enum Collection {
   MARKET_OBSERVATIONS = 'market_observations',
   TRADING_DECISIONS = 'trading_decisions',
   ANALYSIS_RESULTS = 'analysis_results',
+  WEEK_OBSERVATIONS = 'week_observations',
 }
 
 export enum QueryFunctions {
   MATCH_MARKET_OBSERVATIONS = 'match_market_observations',
+  WEEK_OBSERVATIONS = 'match_week_observations',
 }
 
 export interface TokenMarketObservationMatchResult extends MobulaExtendedToken {

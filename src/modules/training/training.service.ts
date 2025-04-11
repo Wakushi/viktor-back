@@ -2,7 +2,7 @@ import { Injectable, Logger } from '@nestjs/common';
 import { CsvService } from 'src/shared/services/csv.service';
 import {
   CoinCodexBaseTokenData,
-  CoinCodexCsvDailyMetrics,
+  DailyOHLCV,
   CoinCodexTokenData,
 } from './entities/coincodex.type';
 import { SupplyMetrics } from './entities/supply.type';
@@ -59,10 +59,10 @@ export class TrainingService {
 
         this.logger.log('Downloading historical data...');
 
-        await this.puppeteerService.downloadCoinCodexCsv(
+        await this.puppeteerService.downloadCoinCodexCsv({
           tokenName,
           fromTimestamp,
-        );
+        });
 
         this.logger.log('Saving metrics..');
 
@@ -84,7 +84,7 @@ export class TrainingService {
 
       this.logger.log('Fetching daily metrics for ', staticSupplyMetrics.name);
 
-      let dailyMetrics: CoinCodexCsvDailyMetrics[] = [];
+      let dailyMetrics: DailyOHLCV[] = [];
 
       try {
         dailyMetrics = await this.fetchDailyMetrics(staticSupplyMetrics.name);
@@ -142,9 +142,7 @@ export class TrainingService {
     }
   }
 
-  private async fetchDailyMetrics(
-    tokenSymbol: string,
-  ): Promise<CoinCodexCsvDailyMetrics[]> {
+  private async fetchDailyMetrics(tokenSymbol: string): Promise<DailyOHLCV[]> {
     const data = await this.csvService.getHistoricalTokenData(
       `${tokenSymbol}.csv`,
     );

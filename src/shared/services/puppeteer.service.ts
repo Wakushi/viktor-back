@@ -39,17 +39,22 @@ export class PuppeteerService {
     }
   }
 
-  public async downloadCoinCodexCsv(
-    tokenSymbol: string,
-    fromTimestamp: number,
-  ): Promise<string> {
+  public async downloadCoinCodexCsv({
+    tokenName,
+    fromTimestamp,
+    directory = 'downloads',
+  }: {
+    tokenName: string;
+    fromTimestamp: number;
+    directory?: string;
+  }): Promise<string> {
     const browser = await puppeteer.launch({
       headless: true,
       args: ['--no-sandbox', '--disable-setuid-sandbox'],
     });
 
     try {
-      const downloadPath = path.join(process.cwd(), 'downloads');
+      const downloadPath = path.join(process.cwd(), directory);
       const downloadFolder = path.resolve(downloadPath);
       await fs.promises.mkdir(downloadFolder, { recursive: true });
 
@@ -71,8 +76,8 @@ export class PuppeteerService {
         }
       });
 
-      const url = `https://coincodex.com/crypto/${tokenSymbol}/historical-data`;
-      const altUrl = `https://coincodex.com/crypto/${tokenSymbol}-token/historical-data`;
+      const url = `https://coincodex.com/crypto/${tokenName}/historical-data`;
+      const altUrl = `https://coincodex.com/crypto/${tokenName}-token/historical-data`;
 
       const EXPORT_BUTTON_SELECTOR = '.export';
       const DATE_SELECT_BUTTON_SELECTOR = '.date-select';
@@ -166,7 +171,7 @@ export class PuppeteerService {
 
           const oldPath = path.join(downloadFolder, downloadedFile);
           const fileExtension = path.extname(downloadedFile);
-          const newFile = `${tokenSymbol}${fileExtension}`;
+          const newFile = `${tokenName}${fileExtension}`;
           const newPath = path.join(downloadFolder, newFile);
 
           await fs.promises.rename(oldPath, newPath);

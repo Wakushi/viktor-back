@@ -12,8 +12,11 @@ export class CsvService {
    * @param fileName Name of the CSV file in the data directory
    * @returns Processed historical data
    */
-  public async getHistoricalTokenData(fileName: string): Promise<any[]> {
-    const filePath = path.join(process.cwd(), 'downloads', fileName);
+  public async getHistoricalTokenData(
+    fileName: string,
+    directory = 'downloads',
+  ): Promise<any[]> {
+    const filePath = path.join(process.cwd(), directory, fileName);
 
     const requiredColumns = [
       'Start',

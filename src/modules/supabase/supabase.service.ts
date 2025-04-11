@@ -13,6 +13,10 @@ import {
 } from '../agent/entities/analysis-result.type';
 import { formatAnalysisResults } from 'src/shared/utils/helpers';
 import { MobulaExtendedToken } from '../mobula/entities/mobula.entities';
+import {
+  SimilarWeekObservation,
+  WeekObservation,
+} from '../analysis/entities/week-observation.type';
 
 @Injectable()
 export class SupabaseService {
@@ -41,6 +45,16 @@ export class SupabaseService {
 
   private get client(): SupabaseClient<any, 'public', any> {
     return this._client;
+  }
+
+  public async insertManyWeekObservations(
+    weekObservations: Omit<WeekObservation, 'id'>[],
+  ): Promise<WeekObservation[]> {
+    return this.batchInsert<WeekObservation>(
+      Collection.WEEK_OBSERVATIONS,
+      weekObservations,
+      { progressLabel: 'week observations' },
+    );
   }
 
   public async insertManyMarketObservationEmbedding(
@@ -86,6 +100,31 @@ export class SupabaseService {
     }
 
     return data ? (data as TokenMarketObservationMatchResult[]) : [];
+  }
+
+  public async matchWeekObservations({
+    queryEmbedding,
+    matchThreshold,
+    matchCount,
+  }: {
+    queryEmbedding: any;
+    matchThreshold: number;
+    matchCount: number;
+  }): Promise<SimilarWeekObservation[]> {
+    const { data, error } = await this.client.rpc(
+      QueryFunctions.WEEK_OBSERVATIONS,
+      {
+        query_embedding: queryEmbedding,
+        match_threshold: matchThreshold,
+        match_count: matchCount,
+      },
+    );
+
+    if (error) {
+      throw new SupabaseError('Failed to match week observations', error);
+    }
+
+    return data ? (data as SimilarWeekObservation[]) : [];
   }
 
   public async getTokensMetadata() {
@@ -240,6 +279,35 @@ export class SupabaseService {
 
     if (error) {
       throw new SupabaseError('Failed to fetch trading decision', error);
+    }
+
+    return data;
+  }
+
+  public async getWeekObservationsByToken(
+    tokenName: string,
+  ): Promise<WeekObservation[]> {
+    const { data, error } = await this.client
+      .from(Collection.WEEK_OBSERVATIONS)
+      .select(
+        `
+          id,
+          token_name,
+          start_date,
+          end_date,
+          observation_text,
+          embedding,
+          raw_ohlcv_window,
+          next_day_close,
+          next_day_change,
+          outcome,
+          created_at
+        `,
+      )
+      .eq('token_name', tokenName);
+
+    if (error) {
+      throw new SupabaseError('Failed to fetch week observations', error);
     }
 
     return data;

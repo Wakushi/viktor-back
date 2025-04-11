@@ -1,7 +1,7 @@
 import { zeroAddress } from 'viem';
 import { TradingDecision } from '../agent/entities/trading-decision.type';
 import { MarketObservationEmbedding } from '../embedding/entities/embedding.type';
-import { CoinCodexCsvDailyMetrics } from './entities/coincodex.type';
+import { DailyOHLCV } from './entities/coincodex.type';
 import { SupplyMetrics } from './entities/supply.type';
 import { MobulaExtendedToken } from '../mobula/entities/mobula.entities';
 
@@ -69,7 +69,7 @@ function buildObservationsFromMetrics({
   staticSupplyMetrics,
 }: {
   tokenSymbol: string;
-  dailyMetrics: CoinCodexCsvDailyMetrics[];
+  dailyMetrics: DailyOHLCV[];
   staticSupplyMetrics: SupplyMetrics;
 }): MobulaExtendedToken[] {
   const format = {
