@@ -6,6 +6,7 @@ export enum Collection {
   TRADING_DECISIONS = 'trading_decisions',
   ANALYSIS_RESULTS = 'analysis_results',
   WEEK_OBSERVATIONS = 'week_observations',
+  WEEK_ANALYSIS_RESULTS = 'week_analysis_results',
 }
 
 export enum QueryFunctions {

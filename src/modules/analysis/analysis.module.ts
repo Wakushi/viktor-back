@@ -1,11 +1,18 @@
-import { Module } from '@nestjs/common';
+import { DynamicModule, Module } from '@nestjs/common';
 import { AnalysisService } from './analysis.service';
 import { AnalysisController } from './analysis.controller';
-import { SharedModule } from 'src/shared/shared.module'
+import { SharedModule } from 'src/shared/shared.module';
 
-@Module({
-  imports: [SharedModule],
-  controllers: [AnalysisController],
-  providers: [AnalysisService],
-})
-export class AnalysisModule {}
+@Module({})
+export class AnalysisModule {
+  static forRoot(): DynamicModule {
+    return {
+      imports: [SharedModule],
+      module: AnalysisModule,
+      controllers: [AnalysisController],
+      providers: [AnalysisService],
+      exports: [AnalysisService],
+      global: true,
+    };
+  }
+}

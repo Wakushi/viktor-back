@@ -15,16 +15,14 @@ import {
 } from './entities/analysis-result.type';
 
 import { PuppeteerService } from 'src/shared/services/puppeteer.service';
-import {
-  MobulaExtendedToken,
-  SwapTransaction,
-} from '../mobula/entities/mobula.entities';
+import { MobulaExtendedToken } from '../mobula/entities/mobula.entities';
 import { MobulaService } from '../mobula/mobula.service';
 import { getAddress } from 'viem';
 import {
   BLACKLISTED_ADDRESSES,
   SUPPORTED_CHAIN_IDS,
 } from '../mobula/constants';
+import { Collection } from '../supabase/entities/collections.type';
 
 @Injectable()
 export class AgentService {
@@ -209,7 +207,10 @@ export class AgentService {
       yesterday.setDate(yesterday.getDate() - 1);
 
       const formattedAnalysis =
-        await this.supabaseService.getAnalysisResultsByDate(date || yesterday);
+        await this.supabaseService.getAnalysisResultsByDate(
+          date || yesterday,
+          Collection.ANALYSIS_RESULTS,
+        );
 
       if (!formattedAnalysis) return;
 
@@ -255,10 +256,13 @@ export class AgentService {
 
       this.logger.log('Saving performances..');
 
-      this.supabaseService.updateAnalysisResults({
-        ...formattedAnalysis,
-        performance: stringifiedPerformance,
-      });
+      this.supabaseService.updateAnalysisResults(
+        {
+          ...formattedAnalysis,
+          performance: stringifiedPerformance,
+        },
+        Collection.ANALYSIS_RESULTS,
+      );
     } catch (error) {
       this.logger.error("Failed to evaluate yesterday's analysis");
       this.logger.error(error);

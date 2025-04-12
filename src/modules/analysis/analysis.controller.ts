@@ -1,22 +1,40 @@
 import {
   BadRequestException,
   Controller,
+  Get,
   HttpCode,
+  InternalServerErrorException,
   Param,
   Post,
 } from '@nestjs/common';
 import { AnalysisService } from './analysis.service';
+import { SupabaseService } from '../supabase/supabase.service';
 
 @Controller('analysis')
 export class AnalysisController {
-  constructor(private readonly analysisService: AnalysisService) {}
+  constructor(
+    private readonly analysisService: AnalysisService,
+    private readonly supabaseService: SupabaseService,
+  ) {}
 
-  @Post('/:tokenName')
+  @Get()
   @HttpCode(200)
-  async runAnalysis(@Param('tokenName') tokenName: string) {
-    if (!tokenName) throw new BadRequestException('Missing token name');
+  async getWeekObservationsTokens() {
+    const observations = await this.supabaseService.getWeekObservations();
 
-    return await this.analysisService.analyzeToken(tokenName);
+    if (!observations) throw new InternalServerErrorException();
+
+    const tokens: Set<string> = new Set();
+
+    observations.forEach((obs) => tokens.add(obs.token_name));
+
+    return Array.from(tokens);
+  }
+
+  @Post()
+  @HttpCode(200)
+  async runAnalysis() {
+    return await this.analysisService.seekMarketBuyingTargets();
   }
 
   @Post('train/:tokenName')
@@ -26,4 +44,5 @@ export class AnalysisController {
 
     return await this.analysisService.trainAnalysis(tokenName);
   }
+
 }

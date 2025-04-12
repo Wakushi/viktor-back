@@ -3,6 +3,7 @@ import {
   FormattedAnalysisResult,
   TokenAnalysisResult,
 } from 'src/modules/agent/entities/analysis-result.type';
+import { TokenWeekAnalysisResult } from 'src/modules/analysis/entities/analysis.type';
 
 export function generateRequestId(uuid: string): string {
   return ethers.keccak256(ethers.solidityPacked(['string'], [uuid]));
@@ -72,6 +73,34 @@ export function formatAnalysisResults(
       {
         formattedResults,
         analysis: results,
+      },
+      null,
+      2,
+    ),
+    created_at: new Date(),
+    fear_and_greed_index: fearAndGreedIndex,
+  };
+}
+
+export function formatWeekAnalysisResults(
+  results: TokenWeekAnalysisResult[],
+  fearAndGreedIndex: string,
+): Omit<FormattedAnalysisResult, 'id'> {
+  const formattedResults: any[] = [];
+
+  results.forEach((res) => {
+    formattedResults.push({
+      token: res.token.name,
+      price: `$${res.token.price}`,
+      buyingConfidence: `${(res.confidence * 100).toFixed(2)}%`,
+    });
+  });
+
+  return {
+    analysis: JSON.stringify(
+      {
+        formattedResults,
+        results,
       },
       null,
       2,

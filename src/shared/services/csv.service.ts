@@ -44,34 +44,23 @@ export class CsvService {
    * @returns Promise with the parsed CSV data
    */
   private async extractLocalCsv(filePath: string): Promise<any[]> {
-    try {
-      const csvData = await fs.readFile(filePath, 'utf-8');
+    const csvData = await fs.readFile(filePath, 'utf-8');
 
-      const parsedData = await new Promise<any[]>((resolve, reject) => {
-        Papa.parse(csvData, {
-          header: true,
-          dynamicTyping: true,
-          skipEmptyLines: true,
-          complete: (results) => {
-            if (results.errors.length > 0) {
-              this.logger.warn(
-                'CSV parsing encountered errors:',
-                results.errors,
-              );
-            }
-            resolve(results.data);
-          },
-          error: (error) => {
-            reject(error);
-          },
-        });
+    const parsedData = await new Promise<any[]>((resolve, reject) => {
+      Papa.parse(csvData, {
+        header: true,
+        dynamicTyping: true,
+        skipEmptyLines: true,
+        complete: (results) => {
+          resolve(results.data);
+        },
+        error: (error) => {
+          reject(error);
+        },
       });
+    });
 
-      return parsedData;
-    } catch (error) {
-      this.logger.error(`Failed to extract CSV data: ${error.message}`);
-      throw new Error(`CSV extraction failed: ${error.message}`);
-    }
+    return parsedData;
   }
 
   /**

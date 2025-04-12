@@ -29,51 +29,38 @@ export class TrainingService {
   public async processTokensHistoricalData(
     tokenNames: string[],
   ): Promise<void> {
-    for (const tokenName of tokenNames) {
-      try {
-        this.logger.log('Processing token ' + tokenName);
-
-        const tokenSymbol = await this.getCoinCodexIdentifier(tokenName);
-
-        if (!tokenSymbol) {
-          this.logger.log('No token found for name ' + tokenName);
-          continue;
-        }
-
-        this.logger.log('Found token symbol ' + tokenSymbol);
-
-        let fromTimestamp = 0;
-
-        const history =
-          await this.supabaseService.getMarketObservationsByToken(tokenSymbol);
-
-        if (history?.length) {
-          const trainingData = history.filter(
-            (token) => token.logo === 'training',
-          );
-
-          trainingData?.sort((a, b) => b.timestamp - a.timestamp);
-
-          fromTimestamp = trainingData[0].timestamp;
-        }
-
-        this.logger.log('Downloading historical data...');
-
-        await this.puppeteerService.downloadCoinCodexCsv({
-          tokenName,
-          fromTimestamp,
-        });
-
-        this.logger.log('Saving metrics..');
-
-        await this.saveHistoricalTokenMetrics(tokenSymbol);
-
-        this.logger.log(`Processed token ${tokenName} successfully !`);
-      } catch (error) {
-        this.logger.error(error);
-        continue;
-      }
-    }
+    // for (const tokenName of tokenNames) {
+    //   try {
+    //     this.logger.log('Processing token ' + tokenName);
+    //     const tokenSymbol = await this.getCoinCodexIdentifier(tokenName);
+    //     if (!tokenSymbol) {
+    //       this.logger.log('No token found for name ' + tokenName);
+    //       continue;
+    //     }
+    //     this.logger.log('Found token symbol ' + tokenSymbol);
+    //     let fromTimestamp = 0;
+    //     const history =
+    //       await this.supabaseService.getMarketObservationsByToken(tokenSymbol);
+    //     if (history?.length) {
+    //       const trainingData = history.filter(
+    //         (token) => token.logo === 'training',
+    //       );
+    //       trainingData?.sort((a, b) => b.timestamp - a.timestamp);
+    //       fromTimestamp = trainingData[0].timestamp;
+    //     }
+    //     this.logger.log('Downloading historical data...');
+    //     await this.puppeteerService.downloadCoinCodexCsv({
+    //       tokenName,
+    //       fromTimestamp,
+    //     });
+    //     this.logger.log('Saving metrics..');
+    //     await this.saveHistoricalTokenMetrics(tokenSymbol);
+    //     this.logger.log(`Processed token ${tokenName} successfully !`);
+    //   } catch (error) {
+    //     this.logger.error(error);
+    //     continue;
+    //   }
+    // }
   }
 
   private async saveHistoricalTokenMetrics(tokenSymbol: string): Promise<any> {

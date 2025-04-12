@@ -1,8 +1,10 @@
 import { Inject, Injectable, Logger } from '@nestjs/common';
 import {
   MobulaChain,
+  MobulaExtendedToken,
   MobulaMultiDataToken,
   MobulaMultipleTokens,
+  MobulaOHLCV,
   MobulaSingleToken,
   MobulaTokenPriceHistory,
   MobulaTokenQueryParams,
@@ -197,6 +199,28 @@ export class MobulaService {
     }
 
     return data;
+  }
+
+  public async getOHLCV({
+    token,
+    from = 0,
+    to = Date.now(),
+  }: {
+    token: MobulaExtendedToken;
+    from?: number;
+    to?: number;
+  }): Promise<MobulaOHLCV[]> {
+    // https://api.mobula.io/api/1/market/history/pair?symbol=PEIPEI&period=1d&from=0&to=1744380949000
+    const endpoint = `/market/history/pair?symbol=${token.symbol}&period=1d&from=${from}&to=${to}`;
+
+    const { data, error } = await this.makeRequest(endpoint);
+
+    if (error) {
+      this.logger.error(`Error fetching ${token.name} OHLCV: ` + error);
+      return null;
+    }
+
+    return data as MobulaOHLCV[];
   }
 
   private async makeRequest(

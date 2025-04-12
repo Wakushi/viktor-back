@@ -3,6 +3,7 @@ import * as puppeteer from 'puppeteer';
 import * as fs from 'fs';
 import * as path from 'path';
 import { formatDateToDDMMYYYY } from '../utils/helpers';
+import { CoinCodexBaseTokenData } from 'src/modules/training/entities/coincodex.type';
 
 @Injectable()
 export class PuppeteerService {
@@ -40,11 +41,11 @@ export class PuppeteerService {
   }
 
   public async downloadCoinCodexCsv({
-    tokenName,
+    coinCodexToken,
     fromTimestamp,
     directory = 'downloads',
   }: {
-    tokenName: string;
+    coinCodexToken: CoinCodexBaseTokenData;
     fromTimestamp: number;
     directory?: string;
   }): Promise<string> {
@@ -76,28 +77,37 @@ export class PuppeteerService {
         }
       });
 
-      const url = `https://coincodex.com/crypto/${tokenName}/historical-data`;
-      const altUrl = `https://coincodex.com/crypto/${tokenName}-token/historical-data`;
+      const { shortname, name, ccu_slug } = coinCodexToken;
 
       const EXPORT_BUTTON_SELECTOR = '.export';
       const DATE_SELECT_BUTTON_SELECTOR = '.date-select';
 
-      await page.goto(url);
+      const possibleUrls = [
+        `https://coincodex.com/crypto/${shortname}/historical-data`,
+        `https://coincodex.com/crypto/${shortname}-token/historical-data`,
+        `https://coincodex.com/crypto/${name}-token/historical-data`,
+        `https://coincodex.com/crypto/${ccu_slug}/historical-data`,
+        `https://coincodex.com/crypto/${name}/historical-data`,
+      ];
 
-      try {
-        await page.waitForSelector(DATE_SELECT_BUTTON_SELECTOR, {
-          timeout: 5000,
-        });
-      } catch (error) {
-        this.logger.log(
-          `Wrong page at url ${url}, trying with '-token' suffix...`,
+      let success = false;
+
+      for (const url of possibleUrls) {
+        try {
+          await page.goto(url);
+          await page.waitForSelector(DATE_SELECT_BUTTON_SELECTOR, {
+            timeout: 5000,
+          });
+
+          success = true;
+          break;
+        } catch (e) {}
+      }
+
+      if (!success) {
+        throw new Error(
+          `Unable to find valid CoinCodex historical data page for ${name}`,
         );
-
-        await page.goto(altUrl);
-
-        await page.waitForSelector(DATE_SELECT_BUTTON_SELECTOR, {
-          timeout: 5000,
-        });
       }
 
       await page.click(DATE_SELECT_BUTTON_SELECTOR);
@@ -118,10 +128,6 @@ export class PuppeteerService {
         : '01011970';
 
       await firstInput.type(formattedStartDate);
-
-      await page.waitForSelector('.select button.button.button-primary', {
-        timeout: 5000,
-      });
 
       const selectButton = await page.waitForSelector(
         '.select button.button.button-primary',
@@ -167,11 +173,9 @@ export class PuppeteerService {
         if (newCompletedFiles.length > 0) {
           const downloadedFile = newCompletedFiles[0];
 
-          this.logger.log('Downloaded file ' + downloadedFile);
-
           const oldPath = path.join(downloadFolder, downloadedFile);
           const fileExtension = path.extname(downloadedFile);
-          const newFile = `${tokenName}${fileExtension}`;
+          const newFile = `${name.toLowerCase()}${fileExtension}`;
           const newPath = path.join(downloadFolder, newFile);
 
           await fs.promises.rename(oldPath, newPath);
@@ -184,7 +188,6 @@ export class PuppeteerService {
 
       throw new Error('Download timeout exceeded');
     } catch (error) {
-      this.logger.error(`Download failed: ${error.message}`);
       throw error;
     } finally {
       await browser.close();

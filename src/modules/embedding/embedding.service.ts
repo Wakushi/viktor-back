@@ -62,6 +62,7 @@ export class EmbeddingService {
 
   public async createEmbeddings(
     documents: string[],
+    log = false,
   ): Promise<VoyageEmbeddingData[]> {
     try {
       this.verifyEmbeddingPayload(documents);
@@ -79,7 +80,9 @@ export class EmbeddingService {
       let batchCounter = 1;
 
       for (const batch of batches) {
-        this.logger.log(`Embedding batch ${batchCounter}/${batches.length}`);
+        if (log) {
+          this.logger.log(`Embedding batch ${batchCounter}/${batches.length}`);
+        }
 
         const requestBody = {
           input: batch,

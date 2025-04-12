@@ -11,12 +11,16 @@ import {
   FormattedAnalysisResult,
   TokenAnalysisResult,
 } from '../agent/entities/analysis-result.type';
-import { formatAnalysisResults } from 'src/shared/utils/helpers';
+import {
+  formatAnalysisResults,
+  formatWeekAnalysisResults,
+} from 'src/shared/utils/helpers';
 import { MobulaExtendedToken } from '../mobula/entities/mobula.entities';
 import {
   SimilarWeekObservation,
   WeekObservation,
 } from '../analysis/entities/week-observation.type';
+import { TokenWeekAnalysisResult } from '../analysis/entities/analysis.type';
 
 @Injectable()
 export class SupabaseService {
@@ -144,6 +148,37 @@ export class SupabaseService {
     }
   }
 
+  public async getWeekObservations(): Promise<WeekObservation[]> {
+    try {
+      const { data, error } = await this.client
+        .from(Collection.WEEK_OBSERVATIONS)
+        .select(
+          `
+            id,
+            token_name,
+            start_date,
+            end_date,
+            observation_text,
+            embedding,
+            raw_ohlcv_window,
+            next_day_close,
+            next_day_change,
+            outcome,
+            created_at
+          `,
+        );
+
+      if (error) {
+        throw new SupabaseError('Failed to fetch week observations', error);
+      }
+
+      return data;
+    } catch (error) {
+      console.error('Error fetching week observations:', error);
+      return null;
+    }
+  }
+
   public async getDecisionByMarketObservationId(
     marketObservationId: number,
   ): Promise<TradingDecision | null> {
@@ -162,11 +197,9 @@ export class SupabaseService {
 
   public async insertAnalysisResult(
     analysisResult: Omit<FormattedAnalysisResult, 'id'>,
+    collection: Collection,
   ): Promise<void> {
-    this.insertSingle<FormattedAnalysisResult>(
-      Collection.ANALYSIS_RESULTS,
-      analysisResult,
-    );
+    this.insertSingle<FormattedAnalysisResult>(collection, analysisResult);
   }
 
   public async getAnalysisResults(
@@ -192,13 +225,14 @@ export class SupabaseService {
 
   public async getAnalysisResultsByDate(
     date: Date,
+    collection: Collection,
   ): Promise<FormattedAnalysisResult> {
     try {
       const startOfDate = new Date(date.setHours(0, 0, 0, 0)).toISOString();
       const endOfDate = new Date(date.setHours(23, 59, 59, 999)).toISOString();
 
       const { data, error } = await this.client
-        .from(Collection.ANALYSIS_RESULTS)
+        .from(collection)
         .select('*')
         .gte('created_at', startOfDate)
         .lte('created_at', endOfDate)
@@ -219,11 +253,11 @@ export class SupabaseService {
     }
   }
 
-  public async updateAnalysisResults(analysis: FormattedAnalysisResult) {
-    this.updateSingle<FormattedAnalysisResult>(
-      Collection.ANALYSIS_RESULTS,
-      analysis,
-    );
+  public async updateAnalysisResults(
+    analysis: FormattedAnalysisResult,
+    collection: Collection,
+  ) {
+    this.updateSingle<FormattedAnalysisResult>(collection, analysis);
   }
 
   public async saveAnalysisResults(
@@ -233,7 +267,27 @@ export class SupabaseService {
     if (!results.length) return;
 
     const formattedResults = formatAnalysisResults(results, fearAndGreedIndex);
-    await this.insertAnalysisResult(formattedResults);
+    await this.insertAnalysisResult(
+      formattedResults,
+      Collection.ANALYSIS_RESULTS,
+    );
+  }
+
+  public async saveWeekAnalysisResults(
+    results: TokenWeekAnalysisResult[],
+    fearAndGreedIndex: string,
+  ): Promise<void> {
+    if (!results.length) return;
+
+    const formattedResults = formatWeekAnalysisResults(
+      results,
+      fearAndGreedIndex,
+    );
+
+    await this.insertAnalysisResult(
+      formattedResults,
+      Collection.WEEK_ANALYSIS_RESULTS,
+    );
   }
 
   public async getMarketObservationsByToken(

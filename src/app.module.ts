@@ -62,7 +62,7 @@ import { AnalysisModule } from './modules/analysis/analysis.module';
     MobulaModule.forRoot({
       apiKey: process.env.MOBULA_API_KEY,
     }),
-    AnalysisModule,
+    AnalysisModule.forRoot(),
   ],
 })
 export class AppModule {

@@ -201,3 +201,12 @@ export interface SwapTransaction {
   token1_address: string;
   transaction_sender_address: string;
 }
+
+export interface MobulaOHLCV {
+  volume: number;
+  open: number;
+  high: number;
+  low: number;
+  close: number;
+  time: number;
+}
