@@ -2,6 +2,7 @@ import { Controller, Post, HttpCode, Get, Query } from '@nestjs/common';
 import { AgentService } from './agent.service';
 import { TokenAnalysisResult } from './entities/analysis-result.type';
 import { SupabaseService } from '../supabase/supabase.service';
+import { Collection } from '../supabase/entities/collections.type';
 
 @Controller('agent')
 export class AgentController {
@@ -31,7 +32,11 @@ export class AgentController {
   async getAnalysisHistory(@Query() query: { fromCloud?: string }) {
     const fromCloud = query.fromCloud === 'true';
 
-    const results = await this.supabaseService.getAnalysisResults(fromCloud);
+    const results = await this.supabaseService.getAnalysisResults(
+      Collection.ANALYSIS_RESULTS,
+      fromCloud,
+    );
+
     if (!results) return;
 
     const formattedResults = results.map((res) => ({
@@ -42,6 +47,7 @@ export class AgentController {
 
     return formattedResults;
   }
+
   @Get('ping')
   @HttpCode(200)
   async ping() {

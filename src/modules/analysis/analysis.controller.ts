@@ -9,6 +9,7 @@ import {
 } from '@nestjs/common';
 import { AnalysisService } from './analysis.service';
 import { SupabaseService } from '../supabase/supabase.service';
+import { Collection } from '../supabase/entities/collections.type';
 
 @Controller('analysis')
 export class AnalysisController {
@@ -18,6 +19,24 @@ export class AnalysisController {
   ) {}
 
   @Get()
+  @HttpCode(200)
+  async getAnalysisHistory() {
+    const results = await this.supabaseService.getAnalysisResults(
+      Collection.WEEK_ANALYSIS_RESULTS,
+    );
+
+    if (!results) return;
+
+    const formattedResults = results.map((res) => ({
+      ...res,
+      analysis: JSON.parse(res.analysis),
+      performance: res.performance ? JSON.parse(res.performance) : '',
+    }));
+
+    return formattedResults;
+  }
+
+  @Get('tokens')
   @HttpCode(200)
   async getWeekObservationsTokens() {
     const observations = await this.supabaseService.getWeekObservations();
@@ -44,5 +63,4 @@ export class AnalysisController {
 
     return await this.analysisService.trainAnalysis(tokenName);
   }
-
 }

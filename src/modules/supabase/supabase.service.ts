@@ -203,14 +203,13 @@ export class SupabaseService {
   }
 
   public async getAnalysisResults(
+    collection: Collection,
     fromCloud = false,
   ): Promise<FormattedAnalysisResult[] | null> {
     const client = fromCloud ? this._cloudClient : this.client;
 
     try {
-      const { data, error } = await client
-        .from(Collection.ANALYSIS_RESULTS)
-        .select('*');
+      const { data, error } = await client.from(collection).select('*');
 
       if (error) {
         throw new SupabaseError('Failed to fetch analysis results', error);
