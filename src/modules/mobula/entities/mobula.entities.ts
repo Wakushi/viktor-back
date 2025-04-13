@@ -152,7 +152,7 @@ interface TokenPair {
 }
 
 export interface TokenContract {
-  address: Address;
+  address: Address | string;
   blockchainId: string;
   blockchain: MobulaChain;
   decimals: number;

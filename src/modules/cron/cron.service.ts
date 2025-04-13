@@ -48,31 +48,36 @@ export class CronService {
 
   @Cron(CronExpression.EVERY_DAY_AT_9AM)
   async handleWeekAnalysisJob() {
-    const start = Date.now();
+    try {
+      const start = Date.now();
 
-    this.logger.log('Evaluating past analysis...');
+      this.logger.log('Evaluating past analysis...');
 
-    await this.analysisService.evaluatePastAnalysis();
+      await this.analysisService.evaluatePastAnalysis();
 
-    this.logger.log(
-      'Evaluated past analysis performances. Starting analysis task...',
-    );
+      this.logger.log(
+        'Evaluated past analysis performances. Starting analysis task...',
+      );
 
-    const analysisResults: TokenWeekAnalysisResult[] =
-      await this.analysisService.seekMarketBuyingTargets();
+      const analysisResults: TokenWeekAnalysisResult[] =
+        await this.analysisService.seekMarketBuyingTargets();
 
-    this.logger.log('Fetching fear and greed index..');
+      this.logger.log('Fetching fear and greed index..');
 
-    const fearAndGreedIndex = await this.agentService.getFearAndGreed();
+      const fearAndGreedIndex = await this.agentService.getFearAndGreed();
 
-    this.logger.log('Saving results..');
+      this.logger.log('Saving results..');
 
-    this.supabaseService.saveWeekAnalysisResults(
-      analysisResults,
-      fearAndGreedIndex,
-    );
+      this.supabaseService.saveWeekAnalysisResults(
+        analysisResults,
+        fearAndGreedIndex,
+      );
 
-    const duration = Date.now() - start;
-    this.logger.log(`Analysis task completed in ${duration}ms`);
+      const duration = Date.now() - start;
+
+      this.logger.log(`Analysis task completed in ${duration}ms`);
+    } catch (error) {
+      this.logger.error(`Error during week analysis CRON Job: `, error);
+    }
   }
 }

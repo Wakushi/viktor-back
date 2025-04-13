@@ -30,8 +30,8 @@ export class UniswapV3Service {
     network = 'mainnet',
   }: {
     chain: MobulaChain;
-    tokenA: Address;
-    tokenB: Address;
+    tokenA: Address | string;
+    tokenB: Address | string;
     poolFee?: FeeAmount;
     network?: 'mainnet' | 'testnet';
   }): Promise<Address> {
