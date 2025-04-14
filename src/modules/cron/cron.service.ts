@@ -47,16 +47,16 @@ export class CronService {
   }
 
   @Cron(CronExpression.EVERY_DAY_AT_9AM)
-  async handleWeekAnalysisJob() {
+  async handleWeekBasedAnalysisJob() {
     try {
       const start = Date.now();
 
-      this.logger.log('Evaluating past analysis...');
+      this.logger.log('Evaluating past week-based analysis...');
 
       await this.analysisService.evaluatePastAnalysis();
 
       this.logger.log(
-        'Evaluated past analysis performances. Starting analysis task...',
+        'Evaluated past analysis performances. Starting week-based analysis task...',
       );
 
       const analysisResults: TokenWeekAnalysisResult[] =

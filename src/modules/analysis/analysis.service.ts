@@ -31,6 +31,7 @@ import {
 } from './helpers/text-generation';
 import { Collection } from '../supabase/entities/collections.type';
 import { TokenPerformance } from '../agent/entities/analysis-result.type';
+import { fetchWithTimeout } from './helpers/utils';
 const Fuse = require('fuse.js');
 
 @Injectable()
@@ -78,11 +79,7 @@ export class AnalysisService {
   ): Promise<TokenWeekAnalysisResult[]> {
     this.logger.log(`Initiating analysis of ${tokens.length} tokens...`);
 
-    if (!this.coinCodexList?.length) {
-      this.coinCodexList = await this.fetchWithTimeout({
-        url: 'https://coincodex.com/apps/coincodex/cache/all_coins.json',
-      });
-    }
+    await this.initCoinCodexList();
 
     const analysisResults: TokenWeekAnalysisResult[] = [];
 
@@ -258,11 +255,7 @@ export class AnalysisService {
 
   public async trainAnalysis(tokenName: string): Promise<void> {
     try {
-      if (!this.coinCodexList?.length) {
-        this.coinCodexList = await this.fetchWithTimeout({
-          url: 'https://coincodex.com/apps/coincodex/cache/all_coins.json',
-        });
-      }
+      await this.initCoinCodexList();
 
       const metrics = await this.getTokenOHLCV({
         tokenName,
@@ -348,11 +341,7 @@ export class AnalysisService {
     fromLastTraining?: boolean;
   }): Promise<DailyOHLCV[] | null> {
     try {
-      if (!this.coinCodexList?.length) {
-        this.coinCodexList = await this.fetchWithTimeout({
-          url: 'https://coincodex.com/apps/coincodex/cache/all_coins.json',
-        });
-      }
+      await this.initCoinCodexList();
 
       const coinCodexToken = await this.getCoinCodexIdentifier(
         tokenName,
@@ -392,7 +381,10 @@ export class AnalysisService {
 
       for (const identifier of possibleIdentifiers) {
         try {
-          dailyMetrics = await this.readTokenOHLCV(identifier);
+          dailyMetrics = await this.csvService.getHistoricalTokenData(
+            `${identifier}.csv`,
+            'ohlcv',
+          );
           break;
         } catch (e) {}
       }
@@ -426,15 +418,6 @@ export class AnalysisService {
       fromTimestamp,
       directory: 'ohlcv',
     });
-  }
-
-  private async readTokenOHLCV(tokenSymbol: string): Promise<DailyOHLCV[]> {
-    const data = await this.csvService.getHistoricalTokenData(
-      `${tokenSymbol}.csv`,
-      'ohlcv',
-    );
-
-    return data;
   }
 
   private async getCoinCodexIdentifier(
@@ -518,45 +501,6 @@ export class AnalysisService {
     const bestMatch = priceMap.get(closestPrice);
 
     return bestMatch ?? candidates[0];
-  }
-
-  private async fetchWithTimeout({
-    url,
-    options = {},
-    timeout = 60000,
-  }: {
-    url: string;
-    options?: any;
-    timeout?: number;
-  }): Promise<any> {
-    const controller = new AbortController();
-    const id = setTimeout(() => controller.abort(), timeout);
-
-    try {
-      const response = await fetch(url, {
-        ...options,
-        signal: controller.signal,
-      });
-
-      if (!response.ok) {
-        throw new Error(`HTTP error: ${response.status}`);
-      }
-
-      const text = await response.text();
-
-      try {
-        return JSON.parse(text);
-      } catch (parseError) {
-        this.logger.error(`Invalid JSON received: ${parseError.message}`);
-        this.logger.error(`Error position: ${parseError.position}`);
-        this.logger.error(
-          `JSON snippet near error: ${text.substring(Math.max(0, parseError.position - 100), parseError.position + 100)}`,
-        );
-        throw parseError;
-      }
-    } finally {
-      clearTimeout(id);
-    }
   }
 
   private async deleteOHLCVDirectory(): Promise<void> {
@@ -675,4 +619,11 @@ export class AnalysisService {
     }
   }
 
+  private async initCoinCodexList(): Promise<void> {
+    if (this.coinCodexList?.length) return;
+
+    this.coinCodexList = await fetchWithTimeout({
+      url: 'https://coincodex.com/apps/coincodex/cache/all_coins.json',
+    });
+  }
 }
