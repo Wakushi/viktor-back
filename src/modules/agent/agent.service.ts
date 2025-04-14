@@ -4,8 +4,6 @@ import {
   calculateDecisionTypeStats,
   calculateProfitabilityScore,
 } from './helpers/decision-computation';
-
-import { TokenData } from 'src/modules/tokens/entities/token.type';
 import { TokensService } from '../tokens/tokens.service';
 import { EmbeddingService } from '../embedding/embedding.service';
 import { SupabaseService } from '../supabase/supabase.service';
@@ -15,9 +13,16 @@ import {
   TokenAnalysisResult,
   TokenPerformance,
 } from './entities/analysis-result.type';
-import { CoinCodexBaseTokenData } from '../training/entities/coincodex.type';
-import { findClosestInt } from 'src/shared/utils/helpers';
+
 import { PuppeteerService } from 'src/shared/services/puppeteer.service';
+import { MobulaExtendedToken } from '../mobula/entities/mobula.entities';
+import { MobulaService } from '../mobula/mobula.service';
+import { getAddress } from 'viem';
+import {
+  BLACKLISTED_ADDRESSES,
+  SUPPORTED_CHAIN_IDS,
+} from '../mobula/constants';
+import { Collection } from '../supabase/entities/collections.type';
 
 @Injectable()
 export class AgentService {
@@ -28,13 +33,15 @@ export class AgentService {
     private readonly embeddingService: EmbeddingService,
     private readonly supabaseService: SupabaseService,
     private readonly puppeteerService: PuppeteerService,
+    private readonly mobulaService: MobulaService,
   ) {}
 
   public async seekMarketBuyingTargets(): Promise<TokenAnalysisResult[]> {
     try {
       this.logger.log('Started token search...');
 
-      const tokens: TokenData[] = await this.tokensService.discoverTokens();
+      const tokens: MobulaExtendedToken[] =
+        await this.tokensService.discoverTokens();
 
       this.logger.log(
         `Discovered ${tokens.length} tokens ! Starting analysis...`,
@@ -54,9 +61,9 @@ export class AgentService {
   }
 
   private async analyzeTokens(
-    tokens: TokenData[],
+    tokens: MobulaExtendedToken[],
   ): Promise<TokenAnalysisResult[]> {
-    const analysisResults: TokenAnalysisResult[] = [];
+    this.logger.log(`Initiating analysis of ${tokens.length} tokens...`);
 
     const SIMILARITY_THRESHOLD = 0.7;
     const MATCH_COUNT = 40;
@@ -70,66 +77,120 @@ export class AgentService {
       confidence: 0.1,
     };
 
-    for (const token of tokens) {
-      this.logger.log(`Analysing token ${token.metadata.name}...`);
+    const analysisResults: TokenAnalysisResult[] = [];
+
+    let batchSize = 5;
+    let batchCounter = 1;
+
+    const BATCH_SUCCESS_THRESHOLD = 5;
+    const BATCH_FAIL_THRESHOLD = -5;
+    const batchRates: Map<number, number> = new Map();
+
+    while (tokens.length) {
+      const batch = tokens.splice(0, batchSize);
+
+      this.logger.log(
+        `Analyzing token batch ${batchCounter} (${tokens.length} tokens remaining)`,
+      );
 
       try {
-        const embeddingText =
-          this.embeddingService.getEmbeddingTextFromObservation(token.market);
+        const results: TokenAnalysisResult[] = await Promise.all(
+          batch.map(async (token) => {
+            const embeddingText =
+              this.embeddingService.getEmbeddingTextFromObservation(token);
 
-        const similarConditions = await this.embeddingService.findNearestMatch({
-          query: embeddingText,
-          matchThreshold: SIMILARITY_THRESHOLD,
-          matchCount: MATCH_COUNT,
-        });
+            const similarConditions =
+              await this.embeddingService.findNearestMatch({
+                query: embeddingText,
+                matchThreshold: SIMILARITY_THRESHOLD,
+                matchCount: MATCH_COUNT,
+              });
 
-        const allDecisions = await Promise.all(
-          similarConditions.map(async (condition) => {
-            const decision =
-              await this.supabaseService.getDecisionByMarketObservationId(
-                condition.id,
-              );
+            const allDecisions = await Promise.all(
+              similarConditions.map(async (condition) => {
+                const decision =
+                  await this.supabaseService.getDecisionByMarketObservationId(
+                    condition.id,
+                  );
 
-            if (!decision) return;
+                if (!decision) return;
+
+                return {
+                  marketCondition: condition,
+                  decision,
+                  similarity: condition.similarity,
+                  profitabilityScore: calculateProfitabilityScore(decision),
+                };
+              }),
+            );
+
+            const decisions = allDecisions.filter((d) => d);
+
+            if (decisions.length === 0) return;
+
+            const decisionStats = calculateDecisionTypeStats(
+              decisions,
+              PROFITABLE_THRESHOLD,
+            );
+
+            const buyingConfidence = calculateBuyingConfidence(
+              decisions,
+              decisionStats,
+              WEIGHTS,
+            );
 
             return {
-              marketCondition: condition,
-              decision,
-              similarity: condition.similarity,
-              profitabilityScore: calculateProfitabilityScore(decision),
+              token,
+              textObservation: embeddingText,
+              buyingConfidence,
+              similarDecisionsAmount: decisions.length,
+              decisionTypeRatio: decisionStats,
             };
           }),
         );
 
-        const decisions = allDecisions.filter((d) => d);
+        analysisResults.push(...results);
+        batchCounter++;
 
-        if (decisions.length === 0) continue;
+        if (!batchRates.has(batchSize)) {
+          batchRates.set(batchSize, 0);
+        }
 
-        const decisionStats = calculateDecisionTypeStats(
-          decisions,
-          PROFITABLE_THRESHOLD,
-        );
+        const newRate = batchRates.get(batchSize) + 1;
 
-        const buyingConfidence = calculateBuyingConfidence(
-          decisions,
-          decisionStats,
-          WEIGHTS,
-        );
-
-        analysisResults.push({
-          token,
-          buyingConfidence,
-          similarDecisionsAmount: decisions.length,
-          decisionTypeRatio: decisionStats,
-        });
+        if (newRate >= BATCH_SUCCESS_THRESHOLD) {
+          batchSize++;
+          this.logger.log(`Increasing batch size to ${batchSize}`);
+          batchRates.set(batchSize, 1);
+        } else {
+          batchRates.set(batchSize, newRate);
+        }
       } catch (error) {
-        console.error(`Error analyzing token ${token.metadata.symbol}:`, error);
+        this.logger.error(error);
+
+        if (!batchRates.has(batchSize)) {
+          batchRates.set(batchSize, 0);
+        }
+
+        const newRate = batchRates.get(batchSize) - 1;
+
+        if (newRate <= BATCH_FAIL_THRESHOLD) {
+          batchSize--;
+          this.logger.log(`Decreasing batch size to ${batchSize}`);
+          batchRates.set(batchSize, 0);
+        } else {
+          batchRates.set(batchSize, newRate);
+        }
+
+        this.logger.warn(`Adding back ${batch.length} tokens to pool..`);
+        tokens.push(...batch);
       }
     }
 
     return analysisResults
       .filter((result) => {
         return (
+          result &&
           result.buyingConfidence.score >= MINIMUM_CONFIDENCE_TO_BUY &&
           result.buyingConfidence.sampleSizeConfidence >=
             MINIMUM_SAMPLE_CONFIDENCE
@@ -146,66 +207,23 @@ export class AgentService {
       yesterday.setDate(yesterday.getDate() - 1);
 
       const formattedAnalysis =
-        await this.supabaseService.getAnalysisResultsByDate(date || yesterday);
+        await this.supabaseService.getAnalysisResultsByDate(
+          date || yesterday,
+          Collection.ANALYSIS_RESULTS,
+        );
+
+      if (!formattedAnalysis) return;
 
       const analysis: Analysis = JSON.parse(formattedAnalysis.analysis);
 
-      const coinCodexData: CoinCodexBaseTokenData[] =
-        await this.fetchWithTimeout({
-          url: 'https://coincodex.com/apps/coincodex/cache/all_coins.json',
-        });
-
       this.logger.log('Fetching current prices..');
 
-      const analysisTokens = analysis.analysis.map((t) => ({
-        name: t.token.metadata.name,
-        id: t.token.metadata.symbol,
-      }));
+      const tokenIds = analysis.analysis
+        .map((data) => data.token.token_id)
+        .filter(Boolean);
 
-      const currentPrices: Map<number, number[]> = new Map();
-
-      for (const token of coinCodexData) {
-        if (currentPrices.size === analysisTokens.length) break;
-
-        const matchingToken = analysisTokens.find((tokenId) => {
-          const lowercasedName = tokenId.name.toLowerCase();
-          const lowercasedNameVariant = lowercasedName.replaceAll(' ', '-');
-          const lowercasedId = tokenId.id.toLowerCase();
-          const lowercasedIdVariant = lowercasedId.replaceAll(' ', '-');
-
-          const possibleMatches = [
-            token.ccu_slug?.toLowerCase(),
-            token.name?.toLowerCase(),
-            token.shortname?.toLowerCase(),
-            token.symbol?.toLowerCase(),
-            token.display_symbol?.toLowerCase(),
-            token.aliases?.toLowerCase(),
-          ];
-
-          return (
-            possibleMatches.includes(lowercasedId) ||
-            possibleMatches.includes(lowercasedIdVariant) ||
-            possibleMatches.includes(lowercasedName) ||
-            possibleMatches.includes(lowercasedNameVariant) ||
-            token.shortname.toLowerCase().includes(lowercasedName)
-          );
-        });
-
-        if (matchingToken) {
-          const index = analysisTokens.indexOf(matchingToken);
-
-          if (currentPrices.has(index)) {
-            currentPrices.set(index, [
-              ...currentPrices.get(index),
-              token.last_price_usd,
-            ]);
-          } else {
-            currentPrices.set(analysisTokens.indexOf(matchingToken), [
-              token.last_price_usd,
-            ]);
-          }
-        }
-      }
+      const currentMarketData =
+        await this.tokensService.getMultiTokenByMobulaIds(tokenIds);
 
       this.logger.log('Computing performances..');
 
@@ -213,31 +231,20 @@ export class AgentService {
 
       for (let i = 0; i < analysis.analysis.length; i++) {
         const result = analysis.analysis[i];
+        const current = currentMarketData.find(
+          (t) => t.id === result.token.token_id,
+        );
 
-        const initialPrice = result.token.market.price_usd;
+        if (!current) continue;
 
-        const currentPricesFound = currentPrices.get(i) || [];
+        const initialPrice = result.token.price;
+        const currentPrice = current.price;
 
-        let currentPrice = currentPricesFound.length
-          ? findClosestInt(currentPricesFound, initialPrice)
-          : initialPrice;
         let priceChange = currentPrice - initialPrice;
         let percentageChange = (priceChange / initialPrice) * 100;
 
-        if (!currentPrice || Math.abs(percentageChange) > 90) {
-          this.logger.log(
-            `Found abnormal price for ${result.token.metadata.name}, refetching price...`,
-          );
-
-          currentPrice = await this.tokensService.getTokenPriceByCoinGeckoId(
-            result.token.market.coin_gecko_id,
-          );
-          priceChange = currentPrice - initialPrice;
-          percentageChange = (priceChange / initialPrice) * 100;
-        }
-
         performances.push({
-          token: result.token.metadata.name,
+          token: result.token.name,
           initialPrice,
           currentPrice,
           priceChange,
@@ -249,56 +256,213 @@ export class AgentService {
 
       this.logger.log('Saving performances..');
 
-      this.supabaseService.updateAnalysisResults({
-        ...formattedAnalysis,
-        performance: stringifiedPerformance,
-      });
+      this.supabaseService.updateAnalysisResults(
+        {
+          ...formattedAnalysis,
+          performance: stringifiedPerformance,
+        },
+        Collection.ANALYSIS_RESULTS,
+      );
     } catch (error) {
       this.logger.error("Failed to evaluate yesterday's analysis");
       this.logger.error(error);
     }
   }
 
-  private async fetchWithTimeout({
-    url,
-    options = {},
-    timeout = 60000,
-  }: {
-    url: string;
-    options?: any;
-    timeout?: number;
-  }): Promise<any> {
-    const controller = new AbortController();
-    const id = setTimeout(() => controller.abort(), timeout);
-
-    try {
-      const response = await fetch(url, {
-        ...options,
-        signal: controller.signal,
-      });
-
-      if (!response.ok) {
-        throw new Error(`HTTP error: ${response.status}`);
-      }
-
-      const text = await response.text();
-
-      try {
-        return JSON.parse(text);
-      } catch (parseError) {
-        this.logger.error(`Invalid JSON received: ${parseError.message}`);
-        this.logger.error(`Error position: ${parseError.position}`);
-        this.logger.error(
-          `JSON snippet near error: ${text.substring(Math.max(0, parseError.position - 100), parseError.position + 100)}`,
-        );
-        throw parseError;
-      }
-    } finally {
-      clearTimeout(id);
-    }
-  }
-
   public async getFearAndGreed(): Promise<string> {
     return await this.puppeteerService.getFearAndGreed();
   }
+
+  public async compareTradersActivity(
+    analysis: TokenAnalysisResult[],
+  ): Promise<any> {
+    const traders = await this.mobulaService.getSmartMoney();
+    const tradersAddresses = traders.map((t) => getAddress(t.wallet_address));
+
+    const analysisTokens = analysis.map((a) => ({
+      name: a.token.name,
+      tokenId: a.token.token_id,
+      contracts: a.token.contracts,
+    }));
+
+    const tokenTradeRatio: Map<number, { bought: number; sold: number }> =
+      new Map();
+
+    this.logger.log(
+      `Starting trader analysis for ${tradersAddresses.length} traders...`,
+    );
+
+    const ONE_DAY_MS = 24 * 60 * 60 * 1000;
+    const scanStart = Date.now() - 2 * ONE_DAY_MS;
+
+    await Promise.all(
+      tradersAddresses.map(async (trader) => {
+        if (BLACKLISTED_ADDRESSES.includes(trader)) return;
+
+        const trades = await this.mobulaService.getWalletTrades({
+          wallet: trader,
+          limit: 100,
+        });
+
+        if (!trades) return;
+
+        for (const trade of trades) {
+          if (!SUPPORTED_CHAIN_IDS.includes(trade.chain_id)) continue;
+
+          const tradeDate = new Date(trade.date);
+
+          if (tradeDate.getTime() < scanStart) continue;
+
+          const token0 = getAddress(trade.token0_address);
+          const token1 = getAddress(trade.token1_address);
+          const tradeTokens = [token0, token1];
+
+          const tokenMatch = analysisTokens.find((t) =>
+            t.contracts.some((c) =>
+              tradeTokens.includes(getAddress(c.address)),
+            ),
+          );
+
+          if (!tokenMatch) continue;
+
+          const contract = tokenMatch.contracts.find((c) => {
+            const contractAddress = getAddress(c.address);
+            return contractAddress === token0 || contractAddress === token1;
+          });
+
+          const tokenAmountTraded =
+            getAddress(contract.address) === token0
+              ? trade.amount0
+              : trade.amount1;
+
+          const hasBought = Number(tokenAmountTraded) > 0;
+
+          const tokenRatio = tokenTradeRatio.get(tokenMatch.tokenId);
+
+          if (!tokenRatio) {
+            tokenTradeRatio.set(tokenMatch.tokenId, {
+              bought: hasBought ? 1 : 0,
+              sold: hasBought ? 0 : 1,
+            });
+            continue;
+          }
+
+          if (hasBought) {
+            tokenRatio.bought++;
+          } else {
+            tokenRatio.sold++;
+          }
+        }
+      }),
+    );
+
+    console.log('tokenTradeRatio: ', tokenTradeRatio);
+
+    // tokenTradeRatio:  Map(10) {
+    //   100007238 => { bought: 0, sold: 1 },
+    //   102499549 => { bought: 14, sold: 17 },
+    //   10486 => { bought: 2, sold: 2 },
+    //   100001656 => { bought: 3, sold: 5 },
+    //   540 => { bought: 0, sold: 14 },
+    //   102503855 => { bought: 18, sold: 25 },
+    //   3774 => { bought: 1, sold: 1 },
+    //   102502670 => { bought: 1, sold: 0 },
+    //   100635869 => { bought: 1, sold: 1 },
+    //   100002460 => { bought: 1, sold: 0 }
+    // }
+  }
+
+  public async performTrades(analysis: TokenAnalysisResult[]): Promise<void> {
+    // Fetch trading wallet balance
+  }
+
+  public async analyzeWarpcastPresence(
+    analysis: TokenAnalysisResult[],
+    limit = 100,
+  ): Promise<void> {
+    const BASE_CHANNEL_URL = 'https://onchainsummer.xyz';
+    const FARCASTER_CHANNEL_URL =
+      'chain://eip155:7777777/erc721:0x4f86113fc3e9783cf3ec9a552cbb566716a57628';
+
+    const urls = [
+      `https://hub.pinata.cloud/v1/castsByParent?url=${FARCASTER_CHANNEL_URL}&reverse=true&pageSize=${limit}`,
+      `https://hub.pinata.cloud/v1/castsByParent?url=${BASE_CHANNEL_URL}&reverse=true&pageSize=${limit}`,
+    ];
+
+    const responses = await Promise.all(urls.map((url) => fetch(url)));
+
+    const allMessagesText: string[] = [];
+
+    for (const response of responses) {
+      if (!response.ok) {
+        this.logger.error('Error fetching Warpcast data..');
+        continue;
+      }
+
+      const { messages } = await response.json();
+      const texts = messages.map((m: FarcasterCast) => m.data.castAddBody.text);
+      allMessagesText.push(...texts);
+    }
+
+    const analysisTokens = analysis.map((a) => ({
+      tokenId: a.token.token_id,
+      name: a.token.name,
+      symbol: a.token.symbol,
+    }));
+
+    const tokenMentions: Map<number, string[]> = new Map();
+
+    for (const message of allMessagesText) {
+      const formatted = message.toLowerCase().replace(/\n/g, '');
+      const words = formatted.split(' ');
+
+      for (const token of analysisTokens) {
+        const { tokenId, name, symbol } = token;
+
+        if (
+          !words.includes(name.toLowerCase()) &&
+          !words.includes(`$${symbol.toLowerCase()}`)
+        ) {
+          continue;
+        }
+
+        const mentions = tokenMentions.get(tokenId);
+
+        if (!mentions) {
+          tokenMentions.set(tokenId, [message]);
+          continue;
+        }
+
+        tokenMentions.set(tokenId, [...mentions, message]);
+      }
+    }
+
+    // TO-DO Analyze each token mentions using a LLM to extract a global sentiment
+    console.log('tokenMentions: ', tokenMentions);
+  }
+}
+
+export interface FarcasterCast {
+  data: {
+    type: 'MESSAGE_TYPE_CAST_ADD';
+    fid: number;
+    timestamp: number;
+    network: 'FARCASTER_NETWORK_MAINNET' | string;
+    castAddBody: {
+      embedsDeprecated: any[];
+      mentions: number[];
+      parentUrl: string;
+      text: string;
+      mentionsPositions: number[];
+      embeds: {
+        url: string;
+      }[];
+      type: 'LONG_CAST' | string;
+    };
+  };
+  hash: string;
+  hashScheme: 'HASH_SCHEME_BLAKE3' | string;
+  signature: string;
+  signatureScheme: 'SIGNATURE_SCHEME_ED25519' | string;
+  signer: string;
 }

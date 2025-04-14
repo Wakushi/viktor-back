@@ -1,5 +1,5 @@
-import { TokenMarketObservation } from 'src/modules/tokens/entities/token.type';
 import { normalizeInRange, normalizePercentage } from './numerical-helpers';
+import { MobulaExtendedToken } from 'src/modules/mobula/entities/mobula.entities';
 
 interface NormalizedMetrics {
   // Existing metrics
@@ -31,62 +31,53 @@ interface SignalWeights {
   volumeWeight: number;
 }
 
-interface TrendWeights {
-  priceWeight: number;
-  marketCapWeight: number;
-  volumeWeight: number;
-}
-
 function calculateNormalizedMetrics(
-  observation: TokenMarketObservation,
+  token: MobulaExtendedToken,
 ): NormalizedMetrics {
-  // Price strength: Where current price sits between ATH and ATL (0-1)
-  const price_strength = normalizeInRange(
-    observation.price_usd,
-    observation.atl,
-    observation.ath,
-  );
+  const price = token.price ?? 0;
+  const volume = token.volume ?? 0;
+  const marketCap = token.market_cap ?? 1; // avoid division by 0
+  const priceChange = token.price_change_24h ?? 0;
+  const ath = token.ath ?? price * 2;
+  const atl = token.atl ?? price / 2;
 
-  // Price momentum: Normalize 24h change to -1 to 1 range
-  const price_momentum = normalizePercentage(
-    observation.price_change_percentage_24h,
-  );
+  // 1. Position of price between ATL and ATH
+  const price_strength = normalizeInRange(price, atl, ath);
 
-  // Volume relative to market cap (higher ratio = more active trading)
-  const volume_to_mcap_ratio =
-    observation.total_volume / observation.market_cap;
+  // 2. Momentum: normalize to [-1, 1]
+  const price_momentum = normalizePercentage(priceChange);
 
-  // Combine price and volume trends
-  const price_volume_trend = normalizePercentage(
-    observation.price_change_percentage_24h *
-      Math.sign(observation.market_cap_change_percentage_24h),
-  );
+  // 3. Volume to mcap
+  const volume_to_mcap_ratio = volume / marketCap;
 
-  // Supply distribution (0-1 where 1 means all supply is circulating)
-  const supply_distribution = observation.supply_ratio;
+  // 4. Price-volume trend (we assume neutral market cap change: 0%)
+  const price_volume_trend = normalizePercentage(priceChange);
 
-  // Market maturity based on ATH/ATL changes
-  const market_maturity =
-    (Math.abs(observation.ath_change_percentage) +
-      Math.abs(observation.atl_change_percentage)) /
-    200; // Normalize to 0-1
+  // 5. Supply distribution = circulating / total
+  const supply_distribution =
+    token.total_supply && token.total_supply > 0
+      ? Math.min(1, (token.circulating_supply ?? 0) / token.total_supply)
+      : 0;
 
-  // Market momentum from market cap changes
-  const market_momentum = normalizePercentage(
-    observation.market_cap_change_percentage_24h,
-  );
+  // 6. Market maturity based on ATH/ATL distance
+  const ath_change_pct = Math.abs(1 - price / ath) * 100;
+  const atl_change_pct = Math.abs(price / atl - 1) * 100;
+  const market_maturity = (ath_change_pct + atl_change_pct) / 200;
 
-  const price_velocity_24h =
-    observation.price_change_24h / (observation.high_24h - observation.low_24h);
+  // 7. Market momentum → we estimate neutral (0) for now
+  const market_momentum = 0;
 
+  // 8. Price velocity approximation — can't calculate from range so fallback to scaled momentum
+  const price_velocity_24h = priceChange / 100;
+
+  // 9. Volume intensity relative to price movement
   const volume_intensity_24h =
-    observation.total_volume /
-    (observation.market_cap *
-      Math.abs(observation.price_change_percentage_24h / 100));
+    Math.abs(priceChange) > 0
+      ? volume / (marketCap * Math.abs(priceChange / 100))
+      : 0;
 
-  const price_range_usage_24h =
-    (observation.price_usd - observation.low_24h) /
-    (observation.high_24h - observation.low_24h);
+  // 10. Price position in imaginary 24h range
+  const price_range_usage_24h = priceChange >= 0 ? 1 : 0;
 
   return {
     price_strength,
@@ -103,40 +94,52 @@ function calculateNormalizedMetrics(
 }
 
 function generateMarketNarratives(
-  obs: TokenMarketObservation,
+  token: MobulaExtendedToken,
   normalized: NormalizedMetrics,
 ): MarketNarratives {
   return {
-    priceAction: generatePriceNarratives(obs),
-    volumeActivity: generateVolumeNarratives(obs, normalized),
-    sentiment: generateSentimentNarratives(obs),
-    marketDynamics: generateMarketDynamicsNarratives(obs, normalized),
-    tradingContext: generateTradingContextNarratives(obs, normalized),
+    priceAction: generatePriceNarratives(token),
+    volumeActivity: generateVolumeNarratives(normalized),
+    sentiment: generateSentimentNarratives(token),
+    marketDynamics: generateMarketDynamicsNarratives(token, normalized),
+    tradingContext: generateTradingContextNarratives(token, normalized),
   };
 }
 
-function generatePriceNarratives(obs: TokenMarketObservation): string[] {
+function generatePriceNarratives(token: MobulaExtendedToken): string[] {
   const narratives: string[] = [];
-  const change = obs.price_change_percentage_24h;
-  const range = ((obs.high_24h - obs.low_24h) / obs.low_24h) * 100;
-  const currentRangePosition =
-    ((obs.price_usd - obs.low_24h) / (obs.high_24h - obs.low_24h)) * 100;
 
-  // Primary 24h movement narrative
+  const change = token.price_change_24h ?? 0;
+  const priceNow = token.price;
+
+  // Estimate price 24h ago using reverse % change
+  const price24hAgo = priceNow / (1 + change / 100);
+
+  // Estimate a high-low range approximation (for volatility measure)
+  const range = Math.abs(priceNow - price24hAgo);
+  const rangePct = Math.abs((range / price24hAgo) * 100);
+
+  // Position in range — approximated as always "close" price
+  const currentRangePosition = priceNow >= price24hAgo ? 100 : 0;
+
+  // Main movement narrative
   if (change <= -5) {
     narratives.push(
-      `24h decline of ${Math.abs(change).toFixed(1)}% with ${range.toFixed(1)}% range, currently at ${currentRangePosition.toFixed(1)}% of range`,
+      `24h decline of ${Math.abs(change).toFixed(1)}% with ~${rangePct.toFixed(1)}% range, currently near bottom`,
     );
   } else if (change >= 5) {
     narratives.push(
-      `24h advance of ${change.toFixed(1)}% with ${range.toFixed(1)}% range, currently at ${currentRangePosition.toFixed(1)}% of range`,
+      `24h advance of ${change.toFixed(1)}% with ~${rangePct.toFixed(1)}% range, currently near top`,
     );
   }
 
-  // Volume context within 24h
+  // Volume-to-price movement intensity heuristic
+  const volume = token.volume ?? 0;
+  const marketCap = token.market_cap ?? 0;
   const volumeIntensity =
-    obs.total_volume /
-    (obs.market_cap * Math.abs(obs.price_change_percentage_24h / 100));
+    marketCap > 0 && Math.abs(change) > 0
+      ? volume / (marketCap * (Math.abs(change) / 100))
+      : 0;
 
   if (volumeIntensity > 2) {
     narratives.push(
@@ -144,45 +147,36 @@ function generatePriceNarratives(obs: TokenMarketObservation): string[] {
     );
   }
 
-  // Range context
-  if (range > 10) {
+  // Volatility range comment
+  if (rangePct > 10) {
     narratives.push(
-      `Wide 24h trading range of ${range.toFixed(1)}% indicating high volatility opportunity`,
+      `Wide 24h trading range of ~${rangePct.toFixed(1)}% indicating high volatility opportunity`,
     );
   }
 
   return narratives;
 }
 
-function generateVolumeNarratives(
-  obs: TokenMarketObservation,
-  normalized: NormalizedMetrics,
-): string[] {
+function generateVolumeNarratives(normalized: NormalizedMetrics): string[] {
   const narratives: string[] = [];
 
-  // Calculate volume context based on volume to market cap ratio
-  const volMcapContext = getVolumeToMarketCapContext(
-    normalized.volume_to_mcap_ratio,
-  );
-
-  // Use price_volume_trend to determine if volume is supporting price action
+  const volMcapRatio = normalized.volume_to_mcap_ratio;
   const volumeTrend = normalized.price_volume_trend;
+  const volMcapContext = getVolumeToMarketCapContext(volMcapRatio);
 
-  // Volume relative to market cap
-  if (normalized.volume_to_mcap_ratio > 0.25) {
+  if (volMcapRatio > 0.25) {
     narratives.push(`Exceptional trading volume with ${volMcapContext}`);
     narratives.push('Trading activity showing significant intensity');
-  } else if (normalized.volume_to_mcap_ratio > 0.15) {
+  } else if (volMcapRatio > 0.15) {
     narratives.push(`Strong trading activity with ${volMcapContext}`);
     narratives.push('Above average market participation');
-  } else if (normalized.volume_to_mcap_ratio > 0.05) {
+  } else if (volMcapRatio > 0.05) {
     narratives.push(`Moderate trading volume with ${volMcapContext}`);
   } else {
     narratives.push(`Low trading activity with ${volMcapContext}`);
     narratives.push('Below average market participation');
   }
 
-  // Add volume trend context
   if (Math.abs(volumeTrend) > 0.7) {
     const direction = volumeTrend > 0 ? 'supporting' : 'contradicting';
     narratives.push(`Volume trend strongly ${direction} price action`);
@@ -206,16 +200,12 @@ function getVolumeToMarketCapContext(ratio: number): string {
   }
 }
 
-function generateSentimentNarratives(obs: TokenMarketObservation): string[] {
+function generateSentimentNarratives(token: MobulaExtendedToken): string[] {
   const narratives: string[] = [];
 
-  // Calculate composite sentiment score from available metrics
-  const sentimentScore = calculateCompositeSentiment(obs);
+  const sentimentScore = calculateCompositeSentiment(token);
+  const marketEngagement = getMarketEngagement(token);
 
-  // Determine market engagement level
-  const marketEngagement = getMarketEngagement(obs);
-
-  // Generate sentiment narrative
   if (sentimentScore <= -0.5) {
     narratives.push(
       `Strongly bearish market conditions with ${marketEngagement}`,
@@ -237,33 +227,40 @@ function generateSentimentNarratives(obs: TokenMarketObservation): string[] {
   return narratives;
 }
 
-function calculateCompositeSentiment(obs: TokenMarketObservation): number {
-  // Combine multiple indicators to create a composite sentiment score (-1 to 1)
-  const priceStrength = obs.price_change_percentage_24h / 20; // Normalize by assuming ±20% as typical range
-  const marketCapStrength = obs.market_cap_change_percentage_24h / 20;
-  const athDistance = obs.ath_change_percentage / 100;
-  const atlDistance = obs.atl_change_percentage / 100;
+function calculateCompositeSentiment(token: MobulaExtendedToken): number {
+  const priceStrength = (token.price_change_24h ?? 0) / 20;
 
-  // Weight the components
+  // Substitute neutral value since we don’t have market_cap_change_24h
+  const marketCapStrength = 0;
+
+  const athDistance =
+    token.ath && token.ath > 0 ? 1 - token.price / token.ath : 0;
+
+  const atlDistance =
+    token.atl && token.atl > 0 ? token.price / token.atl - 1 : 0;
+
   const weightedScore =
-    priceStrength * 0.4 + // Recent price action (40% weight)
-    marketCapStrength * 0.3 + // Market cap momentum (30% weight)
-    athDistance * 0.15 + // Distance from ATH (15% weight)
-    atlDistance * 0.15; // Distance from ATL (15% weight)
+    priceStrength * 0.4 +
+    marketCapStrength * 0.3 +
+    athDistance * 0.15 +
+    atlDistance * 0.15;
 
-  // Use tanh to bound the result between -1 and 1
   return Math.tanh(weightedScore);
 }
 
-function getMarketEngagement(obs: TokenMarketObservation): string {
-  // Calculate volume relative to market cap as engagement indicator
-  const volumeToMarketCap = obs.total_volume / obs.market_cap;
+function getMarketEngagement(token: MobulaExtendedToken): string {
+  const volume = token.volume ?? 0;
+  const marketCap = token.market_cap ?? 0;
 
-  if (volumeToMarketCap > 0.3) {
+  if (marketCap === 0) return 'unknown market engagement';
+
+  const ratio = volume / marketCap;
+
+  if (ratio > 0.3) {
     return 'very high market engagement';
-  } else if (volumeToMarketCap > 0.15) {
+  } else if (ratio > 0.15) {
     return 'strong market participation';
-  } else if (volumeToMarketCap > 0.05) {
+  } else if (ratio > 0.05) {
     return 'moderate trading activity';
   } else {
     return 'limited market activity';
@@ -271,56 +268,57 @@ function getMarketEngagement(obs: TokenMarketObservation): string {
 }
 
 function generateMarketDynamicsNarratives(
-  obs: TokenMarketObservation,
+  token: MobulaExtendedToken,
   normalized: NormalizedMetrics,
 ): string[] {
   const narratives: string[] = [];
 
-  // Use market cap changes as additional confirmation of price movements
-  const price_change = obs.price_change_percentage_24h;
-  const mcap_change = obs.market_cap_change_percentage_24h;
-  const volume_strength = normalized.volume_to_mcap_ratio;
-  const price_strength = normalized.price_strength;
+  const priceChange = token.price_change_24h ?? 0;
+  const volumeStrength = normalized.volume_to_mcap_ratio;
+  const priceStrength = normalized.price_strength;
 
-  // Interpret market activity level
   const marketActivity = getMarketActivity(normalized);
 
-  // Pattern recognition with quantitative context
-  if (price_change <= -5 && volume_strength > 0.15) {
+  // Scenario: Strong drop with volume
+  if (priceChange <= -5 && volumeStrength > 0.15) {
     narratives.push(
-      `Market under pressure with ${Math.abs(price_change).toFixed(1)}% drop on strong volume`,
+      `Market under pressure with ${Math.abs(priceChange).toFixed(1)}% drop on strong volume`,
     );
     narratives.push(`Elevated selling pressure with ${marketActivity}`);
-  } else if (price_change >= 5 && volume_strength > 0.15) {
+  }
+
+  // Scenario: Strong rally with volume
+  else if (priceChange >= 5 && volumeStrength > 0.15) {
     narratives.push(
-      `Strong advance of ${price_change.toFixed(1)}% with high trading activity`,
+      `Strong advance of ${priceChange.toFixed(1)}% with high trading activity`,
     );
     narratives.push(`Buying momentum supported by ${marketActivity}`);
-  } else if (price_change <= -2 && volume_strength < 0.05) {
+  }
+
+  // Scenario: Light sell-off with low interest
+  else if (priceChange <= -2 && volumeStrength < 0.05) {
     narratives.push(
-      `Weak market showing ${Math.abs(price_change).toFixed(1)}% decline with low volume`,
+      `Weak market showing ${Math.abs(priceChange).toFixed(1)}% decline with low volume`,
     );
-  } else if (Math.abs(price_change) < 2 && volume_strength > 0.15) {
-    // Check price strength to determine accumulation vs distribution
-    if (price_strength > 0.7) {
+  }
+
+  // Scenario: Low volatility but high activity (accumulation/distribution zone)
+  else if (Math.abs(priceChange) < 2 && volumeStrength > 0.15) {
+    if (priceStrength > 0.7) {
       narratives.push(
         `Possible distribution with high volume at price resistance`,
       );
-    } else if (price_strength < 0.3) {
+    } else if (priceStrength < 0.3) {
       narratives.push(
         `Potential accumulation with increased volume at support levels`,
       );
     }
-  } else if (Math.sign(price_change) !== Math.sign(mcap_change)) {
-    narratives.push('Price action and market cap showing divergence');
-    narratives.push(`${marketActivity} amid mixed market signals`);
   }
 
   return narratives;
 }
 
 function getMarketActivity(normalized: NormalizedMetrics): string {
-  // Combine volume and market momentum for activity assessment
   const activityLevel =
     normalized.volume_to_mcap_ratio * 0.7 +
     Math.abs(normalized.market_momentum) * 0.3;
@@ -337,36 +335,28 @@ function getMarketActivity(normalized: NormalizedMetrics): string {
 }
 
 function generateTradingContextNarratives(
-  obs: TokenMarketObservation,
+  token: MobulaExtendedToken,
   normalized: NormalizedMetrics,
 ): string[] {
   const narratives: string[] = [];
 
-  // Calculate volatility risk using price range and recent changes
-  const volatilityRisk = calculateVolatilityRisk(obs);
-
-  // Calculate liquidity risk using volume and market cap
+  const volatilityRisk = calculateVolatilityRisk(token);
   const liquidityRisk = calculateLiquidityRisk(normalized.volume_to_mcap_ratio);
 
-  // Add trading context
   narratives.push(
     `Trading conditions show ${volatilityRisk} volatility risk and ${liquidityRisk} liquidity risk`,
   );
 
-  // Add market phase context
-  const phase = detectMarketPhase(normalized, obs);
+  const phase = detectMarketPhase(normalized, token);
   narratives.push(`Market structure indicates ${phase} phase`);
 
   return narratives;
 }
 
-function calculateVolatilityRisk(obs: TokenMarketObservation): string {
-  // Consider both 24h price range and recent price changes
-  const priceRange = ((obs.high_24h - obs.low_24h) / obs.price_usd) * 100;
-  const recentVolatility = Math.abs(obs.price_change_percentage_24h);
+function calculateVolatilityRisk(token: MobulaExtendedToken): string {
+  const change24h = Math.abs(token.price_change_24h ?? 0);
 
-  // Combine both metrics for overall volatility assessment
-  const volatilityScore = priceRange * 0.6 + recentVolatility * 0.4;
+  const volatilityScore = change24h;
 
   if (volatilityScore > 15) {
     return 'high';
@@ -388,135 +378,99 @@ function calculateLiquidityRisk(volumeToMcapRatio: number): string {
 }
 
 function generateEnhancedSignalDescription(
-  obs: TokenMarketObservation,
+  token: MobulaExtendedToken,
   normalized: NormalizedMetrics,
 ): string {
-  const alignmentFactor = calculateAlignmentFactor(obs);
-  const weights = calculateSignalWeights(obs, alignmentFactor);
-  const signals = [];
+  const alignmentFactor = calculateAlignmentFactor(token);
+  const weights = calculateSignalWeights(token, alignmentFactor);
+  const signals: string[] = [];
 
-  // Generate granular signal descriptions
-  signals.push(generatePriceSignal(obs, weights.priceWeight, alignmentFactor));
+  signals.push(
+    generatePriceSignal(token, weights.priceWeight, alignmentFactor),
+  );
 
   signals.push(
     generateVolumeSignal(
-      obs,
+      token,
       normalized,
       weights.volumeWeight,
       alignmentFactor,
     ),
   );
 
-  signals.push(
-    generateMarketCapSignal(
-      obs,
-      normalized,
-      weights.marketCapWeight,
-      alignmentFactor,
-    ),
-  );
-
-  // Add market state with conflict analysis
-  signals.push(generateMarketState(obs, normalized, weights, alignmentFactor));
+  signals.push(generateMarketState(token, normalized, alignmentFactor));
 
   return signals.join(' ');
 }
 
-function generateMarketCapSignal(
-  obs: TokenMarketObservation,
-  normalized: NormalizedMetrics,
-  weight: number,
-  alignmentFactor: number,
-): string {
-  const mcapChange = obs.market_cap_change_percentage_24h;
-  const category = categorizeMarketCapMovement(mcapChange);
-  const strength = Math.min(1.0, Math.abs(mcapChange) / 20);
+function calculateAlignmentFactor(token: MobulaExtendedToken): number {
+  const priceChange = token.price_change_24h ?? 0;
 
-  return `mcap=${category}(${mcapChange.toFixed(1)})[w=${weight.toFixed(2)}][s=${strength.toFixed(2)}][a=${alignmentFactor.toFixed(2)}]`;
-}
+  // Since Mobula doesn’t give % change in mcap, we estimate neutral
+  const marketCapChange = 0;
 
-function categorizeMarketCapMovement(change: number): string {
-  if (change > 20) return 'strong_growth';
-  if (change > 5) return 'growth';
-  if (change > -5) return 'stable';
-  if (change > -20) return 'decline';
-  return 'strong_decline';
-}
+  const athDistance =
+    token.ath && token.ath > 0 ? (1 - token.price / token.ath) * 100 : 100;
+  const atlDistance =
+    token.atl && token.atl > 0 ? (token.price / token.atl - 1) * 100 : 100;
 
-function calculateAlignmentFactor(obs: TokenMarketObservation): number {
-  // Normalize and get direction of key metrics
+  const ath_vs_atl_trend = athDistance - atlDistance;
+
   const directions = [
-    // Price momentum
-    Math.sign(obs.price_change_percentage_24h) *
-      Math.min(1, Math.abs(obs.price_change_percentage_24h) / 10),
-
-    // Market cap momentum
-    Math.sign(obs.market_cap_change_percentage_24h) *
-      Math.min(1, Math.abs(obs.market_cap_change_percentage_24h) / 10),
-
-    // ATH/ATL trend (positive if closer to ATH, negative if closer to ATL)
-    Math.sign(obs.ath_change_percentage - Math.abs(obs.atl_change_percentage)) *
-      Math.min(
-        1,
-        Math.abs(
-          obs.ath_change_percentage - Math.abs(obs.atl_change_percentage),
-        ) / 100,
-      ),
+    Math.sign(priceChange) * Math.min(1, Math.abs(priceChange) / 10),
+    Math.sign(marketCapChange) * Math.min(1, Math.abs(marketCapChange) / 10),
+    Math.sign(ath_vs_atl_trend) * Math.min(1, Math.abs(ath_vs_atl_trend) / 100),
   ];
 
-  // Calculate conflicts between signals
   const conflicts =
-    directions.reduce((acc, dir, i) => {
-      // Compare each direction with the primary price movement direction
-      return acc + Math.abs(dir - directions[0]);
-    }, 0) / 2;
+    directions.reduce((acc, dir, i) => acc + Math.abs(dir - directions[0]), 0) /
+    2;
 
-  // Return exponentially decaying alignment factor (1 = perfect alignment, approaches 0 with more conflicts)
   return Math.exp(-conflicts);
 }
 
 function calculateSignalWeights(
-  obs: TokenMarketObservation,
+  token: MobulaExtendedToken,
   alignmentFactor: number,
 ): SignalWeights {
-  // Base weights from signal strength
+  const priceChange = token.price_change_24h ?? 0;
+  const marketCapChange = 0; // Missing from Mobula
+  const marketCap = token.market_cap ?? 1;
+  const volume = token.volume ?? 0;
+
+  const volumeRatio = volume / marketCap;
+
   const baseWeights = {
-    priceWeight: Math.min(1.0, Math.abs(obs.price_change_percentage_24h) / 10),
-    marketCapWeight: Math.min(
-      1.0,
-      Math.abs(obs.market_cap_change_percentage_24h) / 15,
-    ),
-    volumeWeight: Math.min(1.0, obs.total_volume / obs.market_cap),
+    priceWeight: Math.min(1.0, Math.abs(priceChange) / 10),
+    marketCapWeight: Math.min(1.0, Math.abs(marketCapChange) / 15),
+    volumeWeight: Math.min(1.0, volumeRatio),
   };
 
-  // Adjust weights based on alignment with price movement
   const adjustedWeights = {
     priceWeight: baseWeights.priceWeight,
     marketCapWeight:
       baseWeights.marketCapWeight *
-      (Math.sign(obs.market_cap_change_percentage_24h) ===
-      Math.sign(obs.price_change_percentage_24h)
-        ? 1
-        : 0.7),
+      (Math.sign(marketCapChange) === Math.sign(priceChange) ? 1 : 0.7),
     volumeWeight:
       baseWeights.volumeWeight *
-      // Increase volume weight if it's supporting the price movement
-      (obs.total_volume / obs.market_cap > 0.15 &&
-      Math.abs(obs.price_change_percentage_24h) > 5
-        ? 1.2
-        : 1),
+      (volumeRatio > 0.15 && Math.abs(priceChange) > 5 ? 1.2 : 1),
   };
 
-  // Apply overall market condition adjustments
-  if (Math.abs(obs.ath_change_percentage) < 20) {
-    // Near ATH - increase market cap weight
+  const athDistance =
+    token.ath && token.ath > 0
+      ? Math.abs(1 - token.price / token.ath) * 100
+      : 100;
+  const atlDistance =
+    token.atl && token.atl > 0
+      ? Math.abs(token.price / token.atl - 1) * 100
+      : 100;
+
+  if (athDistance < 20) {
     adjustedWeights.marketCapWeight *= 1.2;
-  } else if (Math.abs(obs.atl_change_percentage) < 20) {
-    // Near ATL - increase volume weight
+  } else if (atlDistance < 20) {
     adjustedWeights.volumeWeight *= 1.2;
   }
 
-  // Normalize weights to sum to 1
   const totalWeight = Object.values(adjustedWeights).reduce((a, b) => a + b, 0);
 
   return {
@@ -527,18 +481,20 @@ function calculateSignalWeights(
 }
 
 function generatePriceSignal(
-  obs: TokenMarketObservation,
+  token: MobulaExtendedToken,
   weight: number,
   alignmentFactor: number,
 ): string {
-  const change = obs.price_change_percentage_24h;
-  const range = ((obs.high_24h - obs.low_24h) / obs.low_24h) * 100;
-  const rangePosition =
-    ((obs.price_usd - obs.low_24h) / (obs.high_24h - obs.low_24h)) * 100;
+  const change = token.price_change_24h ?? 0;
+  const strength = Math.min(1.0, Math.abs(change) / 10);
+
+  // We don’t have high_24h / low_24h, so estimate:
+  const rangeEstimate = Math.abs(token.price_change_24h ?? 0); // % change
+  const rangeStrength = Math.min(1.0, rangeEstimate / 20);
+
+  const rangePosition = change >= 0 ? 100 : 0; // Crude approximation
 
   const category = categorizePriceMovement(change);
-  const strength = Math.min(1.0, Math.abs(change) / 10);
-  const rangeStrength = Math.min(1.0, range / 20);
 
   return `price=${category}(${change.toFixed(1)})[w=${weight.toFixed(2)}][s=${strength.toFixed(2)}][r=${rangeStrength.toFixed(2)}][p=${rangePosition.toFixed(2)}][a=${alignmentFactor.toFixed(2)}]`;
 }
@@ -553,21 +509,20 @@ function categorizePriceMovement(change: number): string {
 }
 
 function generateVolumeSignal(
-  obs: TokenMarketObservation,
+  token: MobulaExtendedToken,
   normalized: NormalizedMetrics,
   weight: number,
   alignmentFactor: number,
 ): string {
-  // Calculate volume-based metrics
-  const volumeToMcap = obs.total_volume / obs.market_cap;
+  const volume = token.volume ?? 0;
+  const marketCap = token.market_cap ?? 1; // Avoid division by zero
+
+  const volumeToMcap = volume / marketCap;
   const category = categorizeVolumeActivity(volumeToMcap);
+  const strength = Math.min(1.0, volumeToMcap * 5);
 
-  // Calculate relative strength using volume to market cap ratio
-  const strength = Math.min(1.0, volumeToMcap * 5); // Cap at 1.0 when volume is 20% of mcap
-
-  // Calculate market impact using price volatility and volume
-  const volatility = (obs.high_24h - obs.low_24h) / obs.price_usd;
-  const impact = Math.min(1.0, volatility * volumeToMcap * 10);
+  const priceChange = Math.abs(token.price_change_24h ?? 0) / 100;
+  const impact = Math.min(1.0, priceChange * volumeToMcap * 10);
 
   return `volume=${category}(${(volumeToMcap * 100).toFixed(1)}%)[w=${weight.toFixed(2)}][s=${strength.toFixed(2)}][i=${impact.toFixed(2)}][a=${alignmentFactor.toFixed(2)}]`;
 }
@@ -587,133 +542,40 @@ function categorizeVolumeActivity(volumeToMcap: number): string {
 }
 
 function generateMarketState(
-  obs: TokenMarketObservation,
+  token: MobulaExtendedToken,
   normalized: NormalizedMetrics,
-  weights: TrendWeights,
   alignmentFactor: number,
 ): string {
-  const trend = analyzeTrend(obs, weights, alignmentFactor);
-  const phase = detectMarketPhase(normalized, obs);
-  const riskAnalysis = analyzeRisk(obs, normalized, alignmentFactor);
+  const phase = detectMarketPhase(normalized, token);
+  const riskAnalysis = analyzeRisk(token, normalized, alignmentFactor);
 
-  return (
-    `trend=${trend.type}[s=${trend.strength.toFixed(2)}][c=${(1 - alignmentFactor).toFixed(2)}] ` +
-    `phase=${phase} ` +
-    `risk=${riskAnalysis.level}[s=${riskAnalysis.score.toFixed(2)}]`
-  );
-}
-
-function analyzeTrend(
-  obs: TokenMarketObservation,
-  weights: TrendWeights,
-  alignmentFactor: number,
-): { type: string; strength: number } {
-  // Calculate individual component strengths
-  const priceStrength =
-    (Math.abs(obs.price_change_percentage_24h) / 10) * weights.priceWeight;
-
-  const marketCapStrength =
-    (Math.abs(obs.market_cap_change_percentage_24h) / 15) *
-    weights.marketCapWeight;
-
-  const volumeStrength =
-    Math.min(1, (obs.total_volume / obs.market_cap) * 5) * weights.volumeWeight;
-
-  // Calculate base strength from components
-  const baseStrength = priceStrength + marketCapStrength + volumeStrength;
-
-  // Adjust strength based on alignment and market context
-  const contextMultiplier = calculateContextMultiplier(obs);
-  const adjustedStrength = baseStrength * alignmentFactor * contextMultiplier;
-
-  return {
-    type: determineTrendType(obs, adjustedStrength, alignmentFactor),
-    strength: adjustedStrength,
-  };
-}
-
-function calculateContextMultiplier(obs: TokenMarketObservation): number {
-  let multiplier = 1;
-
-  // Strengthen signals near market extremes
-  if (Math.abs(obs.ath_change_percentage) < 20) {
-    // Near ATH - strengthen trend
-    multiplier *= 1.2;
-  } else if (Math.abs(obs.atl_change_percentage) < 20) {
-    // Near ATL - strengthen trend
-    multiplier *= 1.2;
-  }
-
-  // Adjust for price volatility
-  const volatility = (obs.high_24h - obs.low_24h) / obs.price_usd;
-  if (volatility > 0.1) {
-    // More than 10% range
-    multiplier *= 1.1; // Strengthen trend in volatile conditions
-  }
-
-  return multiplier;
-}
-
-function determineTrendType(
-  obs: TokenMarketObservation,
-  strength: number,
-  alignmentFactor: number,
-): string {
-  const priceChange = obs.price_change_percentage_24h;
-  const mcapChange = obs.market_cap_change_percentage_24h;
-
-  // Strong trend with high alignment
-  if (strength > 0.7 && alignmentFactor > 0.8) {
-    return priceChange > 0 ? 'strong_uptrend' : 'strong_downtrend';
-  }
-
-  // Moderate trend
-  if (strength > 0.4 || (strength > 0.3 && alignmentFactor > 0.7)) {
-    return priceChange > 0 ? 'uptrend' : 'downtrend';
-  }
-
-  // Price/MCap divergence check
-  if (Math.sign(priceChange) !== Math.sign(mcapChange)) {
-    return 'divergent';
-  }
-
-  // Weak or unclear trend
-  if (Math.abs(priceChange) < 2 && strength < 0.3) {
-    return 'sideways';
-  }
-
-  // Default weak trend
-  return priceChange > 0 ? 'weak_uptrend' : 'weak_downtrend';
+  return `phase=${phase} risk=${riskAnalysis.level}[s=${riskAnalysis.score.toFixed(2)}]`;
 }
 
 function analyzeRisk(
-  obs: TokenMarketObservation,
+  token: MobulaExtendedToken,
   normalized: NormalizedMetrics,
   alignmentFactor: number,
 ): { level: string; score: number } {
-  // Volatility risk based on price range and recent changes
-  const volatilityRisk = Math.min(
-    1.0,
-    (((obs.high_24h - obs.low_24h) / obs.price_usd) * 100 +
-      Math.abs(obs.price_change_percentage_24h)) /
-      20,
-  );
+  const priceChange = Math.abs(token.price_change_24h ?? 0);
+  const volatilityRisk = Math.min(1.0, priceChange / 20);
 
-  // Liquidity risk based on volume to market cap ratio
-  const liquidityRisk = Math.min(
-    1.0,
-    1 - Math.min(1, (obs.total_volume / obs.market_cap) * 5),
-  );
+  const volumeToMcap =
+    token.market_cap && token.market_cap > 0
+      ? (token.volume ?? 0) / token.market_cap
+      : 0;
+  const liquidityRisk = Math.min(1.0, 1 - Math.min(1, volumeToMcap * 5));
 
-  // Market structure risk based on ATH/ATL and supply metrics
+  const athChange =
+    token.ath && token.ath > 0
+      ? Math.abs(1 - token.price / token.ath) * 100
+      : 100;
+
   const marketRisk = Math.min(
     1.0,
-    (Math.abs(obs.ath_change_percentage) / 100 +
-      (1 - normalized.supply_distribution)) /
-      2,
+    (athChange / 100 + (1 - normalized.supply_distribution)) / 2,
   );
 
-  // Calculate composite risk score with weights
   const riskScore =
     volatilityRisk * 0.4 +
     liquidityRisk * 0.3 +
@@ -734,42 +596,50 @@ function categorizeRiskLevel(score: number): string {
 
 function combineNarratives(
   narratives: MarketNarratives,
-  obs: TokenMarketObservation,
+  token: MobulaExtendedToken,
 ): string {
   const selectedNarratives: string[] = [];
+
+  const priceChange = Math.abs(token.price_change_24h ?? 0);
+  const volumeToMcapRatio =
+    token.market_cap && token.market_cap > 0
+      ? (token.volume ?? 0) / token.market_cap
+      : 0;
+
+  const athChangePct =
+    token.ath && token.ath > 0
+      ? Math.abs(1 - token.price / token.ath) * 100
+      : 100;
+
+  const atlChangePct =
+    token.atl && token.atl > 0
+      ? Math.abs(token.price / token.atl - 1) * 100
+      : 100;
 
   // Primary market conditions (always include)
   selectedNarratives.push(narratives.priceAction[0]);
   selectedNarratives.push(narratives.volumeActivity[0]);
   selectedNarratives.push(narratives.sentiment[0]);
 
-  // Add additional context for significant moves
-  if (Math.abs(obs.price_change_percentage_24h) >= 5) {
-    // Significant price movement
+  // Add additional context for significant price moves
+  if (priceChange >= 5) {
     selectedNarratives.push(...narratives.priceAction.slice(1));
   }
 
-  if (obs.total_volume / obs.market_cap > 0.15) {
-    // High volume relative to market cap
+  if (volumeToMcapRatio > 0.15) {
     selectedNarratives.push(...narratives.volumeActivity.slice(1));
   }
 
-  // Market extremes context
-  if (
-    Math.abs(obs.ath_change_percentage) < 20 ||
-    Math.abs(obs.atl_change_percentage) < 20
-  ) {
+  // Market extremes (near ATH or ATL)
+  if (athChangePct < 20 || atlChangePct < 20) {
     selectedNarratives.push(...narratives.marketDynamics);
   }
 
   // Always include trading context
   selectedNarratives.push(...narratives.tradingContext);
 
-  // Repeat key narratives for emphasis on strong market moves
-  if (
-    Math.abs(obs.price_change_percentage_24h) >= 5 &&
-    obs.total_volume / obs.market_cap > 0.15
-  ) {
+  // Reinforce narratives if both strong price move & strong volume
+  if (priceChange >= 5 && volumeToMcapRatio > 0.15) {
     selectedNarratives.push(...narratives.marketDynamics);
   }
 
@@ -778,7 +648,7 @@ function combineNarratives(
 
 function detectMarketPhase(
   normalized: NormalizedMetrics,
-  observation: TokenMarketObservation,
+  token: MobulaExtendedToken,
 ): string {
   const phaseScores = {
     accumulation: 0,
@@ -787,7 +657,7 @@ function detectMarketPhase(
     markdown: 0,
   };
 
-  // Price position in 24h range
+  // Price range usage (e.g., close-to-high = distribution, close-to-low = accumulation)
   const rangePosition = normalized.price_range_usage_24h;
   if (rangePosition > 0.8) {
     phaseScores.distribution += 2;
@@ -795,28 +665,31 @@ function detectMarketPhase(
     phaseScores.accumulation += 2;
   }
 
-  // Volume intensity relative to movement
-  if (normalized.volume_intensity_24h > 2) {
-    if (observation.price_change_percentage_24h > 0) {
+  // Volume intensity tied to price direction
+  const volumeIntensity = normalized.volume_intensity_24h;
+  const priceChange = token.price_change_24h ?? 0;
+
+  if (volumeIntensity > 2) {
+    if (priceChange > 0) {
       phaseScores.markup += 2;
     } else {
       phaseScores.markdown += 2;
     }
   }
 
-  // Price velocity
-  if (normalized.price_velocity_24h > 0.7) {
+  // Momentum scoring (velocity over 24h trendline)
+  const velocity = normalized.price_velocity_24h;
+  if (velocity > 0.7) {
     phaseScores.markup += 1;
-  } else if (normalized.price_velocity_24h < -0.7) {
+  } else if (velocity < -0.7) {
     phaseScores.markdown += 1;
   }
 
-  // Find the phase with highest score
+  // Return the phase with the highest score
   return Object.entries(phaseScores).reduce((a, b) => (b[1] > a[1] ? b : a))[0];
 }
 
 export {
-  TokenMarketObservation,
   NormalizedMetrics,
   detectMarketPhase,
   generateMarketNarratives,

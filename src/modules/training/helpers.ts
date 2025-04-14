@@ -1,9 +1,9 @@
 import { zeroAddress } from 'viem';
 import { TradingDecision } from '../agent/entities/trading-decision.type';
 import { MarketObservationEmbedding } from '../embedding/entities/embedding.type';
-import { CoinCodexCsvDailyMetrics } from './entities/coincodex.type';
+import { DailyOHLCV } from './entities/coincodex.type';
 import { SupplyMetrics } from './entities/supply.type';
-import { TokenMarketObservation } from '../tokens/entities/token.type';
+import { MobulaExtendedToken } from '../mobula/entities/mobula.entities';
 
 const SIGNIFICANT_PRICE_CHANGE_THRESHOLD = 5;
 
@@ -13,16 +13,15 @@ function createTradingDecisions(
   const tradingDecisions: Omit<TradingDecision, 'id'>[] = [];
 
   insertedObservations.slice(0, -1).forEach((marketObservation, i) => {
-    const { id, price_usd } = marketObservation;
+    const { id, price } = marketObservation;
     const nextDayObs = insertedObservations[i + 1];
 
-    const priceChange24hPct =
-      ((nextDayObs.price_usd - price_usd) / price_usd) * 100;
+    const priceChange24hPct = ((nextDayObs.price - price) / price) * 100;
 
     if (Math.abs(priceChange24hPct) >= SIGNIFICANT_PRICE_CHANGE_THRESHOLD) {
       const decision = createSingleTradingDecision(
         id,
-        price_usd,
+        price,
         nextDayObs,
         priceChange24hPct,
       );
@@ -56,7 +55,7 @@ function createSingleTradingDecision(
     execution_successful: true,
     execution_price_usd: currentPrice,
 
-    price_24h_after_usd: nextDayObs.price_usd,
+    price_24h_after_usd: nextDayObs.price,
     price_change_24h_pct: priceChange24hPct,
 
     created_at: new Date(nextDayObs.timestamp),
@@ -70,112 +69,68 @@ function buildObservationsFromMetrics({
   staticSupplyMetrics,
 }: {
   tokenSymbol: string;
-  dailyMetrics: CoinCodexCsvDailyMetrics[];
+  dailyMetrics: DailyOHLCV[];
   staticSupplyMetrics: SupplyMetrics;
-}): TokenMarketObservation[] {
+}): MobulaExtendedToken[] {
   const format = {
-    price: (n: number) => {
-      if (typeof n !== 'number' || isNaN(n)) return 0;
-      return n;
-    },
-    percentage: (n: number) => {
-      if (typeof n !== 'number' || isNaN(n)) return 0;
-      return Math.round(n * 10000) / 10000;
-    },
-    bigNumber: (n: number) => {
-      if (typeof n !== 'number' || isNaN(n)) return 0;
-      return Math.round(n);
-    },
-    safePercentageChange: (current: number, previous: number): number => {
-      if (
-        typeof current !== 'number' ||
-        typeof previous !== 'number' ||
-        isNaN(current) ||
-        isNaN(previous) ||
-        previous === 0
-      ) {
-        return 0;
-      }
-      return (
-        Math.round(((current - previous) / Math.abs(previous)) * 100 * 10000) /
-        10000
-      );
+    price: (n: number) => (typeof n !== 'number' || isNaN(n) ? 0 : n),
+    percentage: (n: number) =>
+      typeof n !== 'number' || isNaN(n) ? 0 : Math.round(n * 10000) / 10000,
+    bigNumber: (n: number) =>
+      typeof n !== 'number' || isNaN(n) ? 0 : Math.round(n),
+    safeChange: (current: number, previous: number): number => {
+      if (!current || !previous || previous === 0) return 0;
+      return current - previous;
     },
   };
 
   let historicalHigh = dailyMetrics[0].Close;
   let historicalLow = dailyMetrics[0].Close;
 
-  return dailyMetrics.map((dailyMetric, index) => {
-    const prevDay = index > 0 ? dailyMetrics[index - 1] : null;
-    const timestamp = new Date(dailyMetric.Start).getTime();
-    const currentPrice = format.price(dailyMetric.Close);
+  return dailyMetrics.map((daily, index) => {
+    const prev = index > 0 ? dailyMetrics[index - 1] : null;
 
-    const currentMarketCap = format.bigNumber(dailyMetric['Market Cap']);
-    const prevMarketCap = prevDay
-      ? format.bigNumber(prevDay['Market Cap'])
-      : currentMarketCap;
+    const price = format.price(daily.Close);
+    const volume = format.bigNumber(daily.Volume);
+    const marketCap = format.bigNumber(daily['Market Cap']);
 
-    historicalHigh = Math.max(historicalHigh, dailyMetric.Close);
-    historicalLow = Math.min(historicalLow, dailyMetric.Close);
+    historicalHigh = Math.max(historicalHigh, daily.Close);
+    historicalLow = Math.min(historicalLow, daily.Close);
 
     const ath = format.price(historicalHigh);
     const atl = format.price(historicalLow);
 
-    const ath_change_percentage = format.safePercentageChange(
-      currentPrice,
-      ath,
-    );
-    const atl_change_percentage = format.safePercentageChange(
-      currentPrice,
-      atl,
-    );
-
-    const price_change_24h = prevDay
-      ? format.price(dailyMetric.Close - prevDay.Close)
-      : 0;
-
-    const price_change_percentage_24h = prevDay
-      ? format.safePercentageChange(dailyMetric.Close, prevDay.Close)
-      : 0;
-
-    const market_cap_change_24h = format.bigNumber(
-      currentMarketCap - prevMarketCap,
-    );
-
-    const market_cap_change_percentage_24h = format.safePercentageChange(
-      currentMarketCap,
-      prevMarketCap,
-    );
-
     return {
-      coin_gecko_id: tokenSymbol.toLowerCase(),
-      timestamp,
-      created_at: new Date(dailyMetric.Start),
-      market_cap_rank: 1,
-      price_usd: currentPrice,
-      high_24h: format.price(dailyMetric.High),
-      low_24h: format.price(dailyMetric.Low),
-      market_cap: currentMarketCap,
-      total_volume: format.bigNumber(dailyMetric.Volume),
-
+      key: `${tokenSymbol}-${index}`,
+      token_id: 0,
+      name: tokenSymbol,
+      symbol: tokenSymbol.toUpperCase(),
+      decimals: 18,
+      logo: 'training',
+      rank: 0,
+      price,
+      market_cap: marketCap,
+      market_cap_diluted: staticSupplyMetrics.fully_diluted_valuation,
+      volume,
+      volume_change_24h: 0,
+      volume_7d: 0,
+      liquidity: 0,
+      timestamp: new Date(daily.Start).getTime(),
       ath,
       atl,
-      ath_change_percentage,
-      atl_change_percentage,
-
-      price_change_24h,
-      price_change_percentage_24h,
-      market_cap_change_24h,
-      market_cap_change_percentage_24h,
-
-      fully_diluted_valuation: format.bigNumber(
-        dailyMetric.Close * staticSupplyMetrics.total_supply,
-      ),
-      circulating_supply: staticSupplyMetrics.circulating_supply,
+      off_chain_volume: 0,
+      is_listed: true,
+      price_change_1h: 0,
+      price_change_24h: prev
+        ? format.percentage(((price - prev.Close) / prev.Close) * 100)
+        : 0,
+      price_change_7d: 0,
+      price_change_1m: 0,
+      price_change_1y: 0,
       total_supply: staticSupplyMetrics.total_supply,
-      max_supply: staticSupplyMetrics.max_supply,
-      supply_ratio: format.percentage(staticSupplyMetrics.supply_ratio),
+      circulating_supply: staticSupplyMetrics.circulating_supply,
+      contracts: [],
+      extra: {},
     };
   });
 }

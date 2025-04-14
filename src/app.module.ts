@@ -13,6 +13,9 @@ import { TokensModule } from './modules/tokens/tokens.module';
 import { TrainingModule } from './modules/training/training.module';
 import { ScheduleModule } from '@nestjs/schedule';
 import { CronModule } from './modules/cron/cron.module';
+import { MobulaModule } from './modules/mobula/mobula.module';
+import { MobulaChain } from './modules/mobula/entities/mobula.entities';
+import { AnalysisModule } from './modules/analysis/analysis.module';
 
 @Module({
   imports: [
@@ -31,6 +34,8 @@ import { CronModule } from './modules/cron/cron.module';
     SupabaseModule.forRoot({
       privateKey: process.env.SUPABASE_API_KEY,
       url: process.env.SUPABASE_URL,
+      cloudPrivateKey: process.env.CLOUD_SUPABASE_API_KEY,
+      cloudUrl: process.env.CLOUD_SUPABASE_URL,
     }),
     EmbeddingModule.forRoot({
       apiKey: process.env.VOYAGE_API_KEY,
@@ -40,18 +45,12 @@ import { CronModule } from './modules/cron/cron.module';
     UniswapV3Module.forRoot({
       rpcUrls: {
         mainnet: {
-          ethereum: `https://eth-mainnet.g.alchemy.com/v2/${process.env.ALCHEMY_API_KEY}`,
-          'arbitrum-one': `https://arb-mainnet.g.alchemy.com/v2/${process.env.ALCHEMY_API_KEY}`,
-          'polygon-pos': `https://polygon-mainnet.g.alchemy.com/v2/${process.env.ALCHEMY_API_KEY}`,
-          base: `https://base-mainnet.g.alchemy.com/v2/${process.env.ALCHEMY_API_KEY}`,
-          avalanche: `https://avax-mainnet.g.alchemy.com/v2/${process.env.ALCHEMY_API_KEY}`,
+          [MobulaChain.ETHEREUM]: `https://eth-mainnet.g.alchemy.com/v2/${process.env.ALCHEMY_API_KEY}`,
+          [MobulaChain.BASE]: `https://base-mainnet.g.alchemy.com/v2/${process.env.ALCHEMY_API_KEY}`,
         },
         testnet: {
-          ethereum: `https://eth-sepolia.g.alchemy.com/v2/${process.env.ALCHEMY_API_KEY}`,
-          'arbitrum-one': `https://arb-sepolia.g.alchemy.com/v2/${process.env.ALCHEMY_API_KEY}`,
-          'polygon-pos': `https://polygon-amoy.g.alchemy.com/v2/${process.env.ALCHEMY_API_KEY}`,
-          base: `https://base-sepolia.g.alchemy.com/v2/${process.env.ALCHEMY_API_KEY}`,
-          avalanche: `https://avax-fuji.g.alchemy.com/v2/${process.env.ALCHEMY_API_KEY}`,
+          [MobulaChain.ETHEREUM]: `https://eth-sepolia.g.alchemy.com/v2/${process.env.ALCHEMY_API_KEY}`,
+          [MobulaChain.BASE]: `https://base-sepolia.g.alchemy.com/v2/${process.env.ALCHEMY_API_KEY}`,
         },
       },
     }),
@@ -60,6 +59,10 @@ import { CronModule } from './modules/cron/cron.module';
     TrainingModule,
     ScheduleModule.forRoot(),
     CronModule,
+    MobulaModule.forRoot({
+      apiKey: process.env.MOBULA_API_KEY,
+    }),
+    AnalysisModule.forRoot(),
   ],
 })
 export class AppModule {

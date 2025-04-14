@@ -1,4 +1,4 @@
-import { Inject, Injectable } from '@nestjs/common';
+import { Inject, Injectable, Logger } from '@nestjs/common';
 import {
   VoyageClient,
   VoyageConfig,
@@ -13,11 +13,14 @@ import {
   generateEnhancedSignalDescription,
   generateMarketNarratives,
 } from './helpers/market-data-formatting';
-import { TokenMarketObservation } from '../tokens/entities/token.type';
 import { TokenMarketObservationMatchResult } from '../supabase/entities/collections.type';
+import { MobulaExtendedToken } from '../mobula/entities/mobula.entities';
+import { SimilarWeekObservation } from '../analysis/entities/week-observation.type';
 
 @Injectable()
 export class EmbeddingService {
+  private readonly logger = new Logger(EmbeddingService.name);
+
   private voyageClient: VoyageClient;
 
   constructor(
@@ -33,10 +36,10 @@ export class EmbeddingService {
   }
 
   public async generateMarketObservationEmbeddings(
-    tokenMarketObservations: TokenMarketObservation[],
+    tokens: MobulaExtendedToken[],
   ): Promise<Omit<MarketObservationEmbedding, 'id'>[]> {
-    const observationsText: string[] = tokenMarketObservations.map((obs) =>
-      this.getEmbeddingTextFromObservation(obs),
+    const observationsText: string[] = tokens.map((token) =>
+      this.getEmbeddingTextFromObservation(token),
     );
 
     const observationsEmbeddings =
@@ -49,7 +52,7 @@ export class EmbeddingService {
 
     observationsEmbeddings.forEach((observationEmbedding, i) => {
       marketObservationEmbeddings.push({
-        ...tokenMarketObservations[i],
+        ...tokens[i],
         embedding: observationEmbedding.embedding,
       });
     });
@@ -57,34 +60,9 @@ export class EmbeddingService {
     return marketObservationEmbeddings;
   }
 
-  public async createSaveEmbedding(
-    marketObservation: TokenMarketObservation,
-  ): Promise<Omit<MarketObservationEmbedding, 'id'> | null> {
-    try {
-      const embeddingText =
-        this.getEmbeddingTextFromObservation(marketObservation);
-
-      const embeddings = await this.createEmbeddings([embeddingText]);
-
-      const marketObservationEmbedding: Omit<MarketObservationEmbedding, 'id'> =
-        {
-          ...marketObservation,
-          embedding: embeddings[0].embedding,
-        };
-
-      await this.supabaseService.insertMarketObservationEmbedding(
-        marketObservationEmbedding,
-      );
-
-      return marketObservationEmbedding;
-    } catch (error: any) {
-      console.error(error);
-      return null;
-    }
-  }
-
   public async createEmbeddings(
     documents: string[],
+    log = false,
   ): Promise<VoyageEmbeddingData[]> {
     try {
       this.verifyEmbeddingPayload(documents);
@@ -99,7 +77,13 @@ export class EmbeddingService {
 
       const embeddingResults: VoyageEmbeddingData[] = [];
 
+      let batchCounter = 1;
+
       for (const batch of batches) {
+        if (log) {
+          this.logger.log(`Embedding batch ${batchCounter}/${batches.length}`);
+        }
+
         const requestBody = {
           input: batch,
           model: this.voyageClient.model || 'voyage-3',
@@ -135,6 +119,7 @@ export class EmbeddingService {
         }
 
         embeddingResults.push(...voyageResponse.data);
+        batchCounter++;
       }
 
       return embeddingResults;
@@ -143,18 +128,13 @@ export class EmbeddingService {
     }
   }
 
-  public getEmbeddingTextFromObservation(
-    observation: TokenMarketObservation,
-  ): string {
-    const normalized = calculateNormalizedMetrics(observation);
+  public getEmbeddingTextFromObservation(token: MobulaExtendedToken): string {
+    const normalized = calculateNormalizedMetrics(token);
 
-    const narratives = generateMarketNarratives(observation, normalized);
-    const narrativeText = combineNarratives(narratives, observation);
+    const narratives = generateMarketNarratives(token, normalized);
+    const narrativeText = combineNarratives(narratives, token);
 
-    const signalText = generateEnhancedSignalDescription(
-      observation,
-      normalized,
-    );
+    const signalText = generateEnhancedSignalDescription(token, normalized);
 
     return `${narrativeText} [SIGNALS] ${signalText}`;
   }
@@ -198,6 +178,51 @@ export class EmbeddingService {
 
       throw new Error(
         `Unexpected error in findNearestMatch: ${
+          error instanceof Error ? error.message : 'Unknown error'
+        }`,
+      );
+    }
+  }
+
+  public async findClosestWeekObservation({
+    query,
+    matchThreshold,
+    matchCount,
+  }: {
+    query: any;
+    matchThreshold: number;
+    matchCount: number;
+  }): Promise<SimilarWeekObservation[]> {
+    try {
+      this.verifyQuery(query);
+
+      const embeddings = await this.createEmbeddings([query]);
+
+      if (!embeddings || embeddings.length === 0) {
+        throw new ValidationError('No embeddings generated for query');
+      }
+
+      const matchingWeekObservations =
+        await this.supabaseService.matchWeekObservations({
+          queryEmbedding: embeddings[0].embedding,
+          matchThreshold,
+          matchCount,
+        });
+
+      return matchingWeekObservations;
+    } catch (error) {
+      console.error('Error in findClosestWeekObservation:', error);
+
+      if (
+        error instanceof ValidationError ||
+        error instanceof VoyageAPIError ||
+        error instanceof SupabaseError
+      ) {
+        throw error;
+      }
+
+      throw new Error(
+        `Unexpected error in findClosestWeekObservation: ${
           error instanceof Error ? error.message : 'Unknown error'
         }`,
       );

@@ -2,6 +2,8 @@ import { Injectable, Logger } from '@nestjs/common';
 import * as puppeteer from 'puppeteer';
 import * as fs from 'fs';
 import * as path from 'path';
+import { formatDateToDDMMYYYY } from '../utils/helpers';
+import { CoinCodexBaseTokenData } from 'src/modules/training/entities/coincodex.type';
 
 @Injectable()
 export class PuppeteerService {
@@ -38,14 +40,22 @@ export class PuppeteerService {
     }
   }
 
-  public async downloadCoinCodexCsv(tokenSymbol: string): Promise<string> {
+  public async downloadCoinCodexCsv({
+    coinCodexToken,
+    fromTimestamp,
+    directory = 'downloads',
+  }: {
+    coinCodexToken: CoinCodexBaseTokenData;
+    fromTimestamp: number;
+    directory?: string;
+  }): Promise<string> {
     const browser = await puppeteer.launch({
       headless: true,
       args: ['--no-sandbox', '--disable-setuid-sandbox'],
     });
 
     try {
-      const downloadPath = path.join(process.cwd(), 'downloads');
+      const downloadPath = path.join(process.cwd(), directory);
       const downloadFolder = path.resolve(downloadPath);
       await fs.promises.mkdir(downloadFolder, { recursive: true });
 
@@ -67,28 +77,37 @@ export class PuppeteerService {
         }
       });
 
-      const url = `https://coincodex.com/crypto/${tokenSymbol}/historical-data`;
-      const altUrl = `https://coincodex.com/crypto/${tokenSymbol}-token/historical-data`;
+      const { shortname, name, ccu_slug } = coinCodexToken;
 
       const EXPORT_BUTTON_SELECTOR = '.export';
       const DATE_SELECT_BUTTON_SELECTOR = '.date-select';
 
-      await page.goto(url);
+      const possibleUrls = [
+        `https://coincodex.com/crypto/${shortname}/historical-data`,
+        `https://coincodex.com/crypto/${shortname}-token/historical-data`,
+        `https://coincodex.com/crypto/${name}-token/historical-data`,
+        `https://coincodex.com/crypto/${ccu_slug}/historical-data`,
+        `https://coincodex.com/crypto/${name}/historical-data`,
+      ];
 
-      try {
-        await page.waitForSelector(DATE_SELECT_BUTTON_SELECTOR, {
-          timeout: 5000,
-        });
-      } catch (error) {
-        this.logger.log(
-          `Wrong page at url ${url}, trying with '-token' suffix...`,
+      let success = false;
+
+      for (const url of possibleUrls) {
+        try {
+          await page.goto(url);
+          await page.waitForSelector(DATE_SELECT_BUTTON_SELECTOR, {
+            timeout: 5000,
+          });
+
+          success = true;
+          break;
+        } catch (e) {}
+      }
+
+      if (!success) {
+        throw new Error(
+          `Unable to find valid CoinCodex historical data page for ${name}`,
         );
-
-        await page.goto(altUrl);
-
-        await page.waitForSelector(DATE_SELECT_BUTTON_SELECTOR, {
-          timeout: 5000,
-        });
       }
 
       await page.click(DATE_SELECT_BUTTON_SELECTOR);
@@ -104,26 +123,25 @@ export class PuppeteerService {
         },
       );
 
-      await firstInput.type('01011970');
+      const formattedStartDate = fromTimestamp
+        ? formatDateToDDMMYYYY(new Date(fromTimestamp))
+        : '01011970';
 
-      await page.waitForSelector('.select button.button.button-primary', {
-        timeout: 5000,
-      });
+      await firstInput.type(formattedStartDate);
 
-      const buttonText = await page.evaluate(() => {
-        const button = document.querySelector(
-          '.select button.button.button-primary',
-        );
-        return button ? button.textContent.trim() : null;
-      });
+      const selectButton = await page.waitForSelector(
+        '.select button.button.button-primary',
+        {
+          timeout: 5000,
+          visible: true,
+        },
+      );
 
-      if (buttonText === 'Select') {
-        await page.click('.select button.button.button-primary');
-      } else {
-        throw new Error(
-          `Expected to find "Select" button but found "${buttonText}" instead`,
-        );
+      if (!selectButton) {
+        throw new Error('Select button not found');
       }
+
+      await selectButton.click();
 
       await page.evaluate(
         () => new Promise((resolve) => setTimeout(resolve, 3000)),
@@ -155,11 +173,9 @@ export class PuppeteerService {
         if (newCompletedFiles.length > 0) {
           const downloadedFile = newCompletedFiles[0];
 
-          this.logger.log('Downloaded file ' + downloadedFile);
-
           const oldPath = path.join(downloadFolder, downloadedFile);
           const fileExtension = path.extname(downloadedFile);
-          const newFile = `${tokenSymbol}${fileExtension}`;
+          const newFile = `${name.toLowerCase()}${fileExtension}`;
           const newPath = path.join(downloadFolder, newFile);
 
           await fs.promises.rename(oldPath, newPath);
@@ -172,10 +188,22 @@ export class PuppeteerService {
 
       throw new Error('Download timeout exceeded');
     } catch (error) {
-      this.logger.error(`Download failed: ${error.message}`);
       throw error;
     } finally {
       await browser.close();
+    }
+  }
+
+  private async saveScreenshot(
+    page: puppeteer.Page,
+    name = 'screenshot',
+  ): Promise<void> {
+    try {
+      const filePath = path.resolve(process.cwd(), `${name}-${Date.now()}.png`);
+      await page.screenshot({ path: filePath, fullPage: false });
+      this.logger.log(`📸 Screenshot saved to ${filePath}`);
+    } catch (error) {
+      this.logger.error(`Failed to take screenshot: ${error.message}`);
     }
   }
 }

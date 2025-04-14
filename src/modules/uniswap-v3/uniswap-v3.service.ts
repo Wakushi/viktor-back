@@ -1,15 +1,13 @@
 import { Inject, Injectable } from '@nestjs/common';
 import { FeeAmount } from '@uniswap/v3-sdk';
 import { ethers } from 'ethers';
-import { extractTokenChains, isWethToken } from 'src/shared/utils/helpers';
 import {
   UNISWAP_V3_FACTORY,
   UNISWAP_V3_FACTORY_ABI,
 } from './entities/constants';
-import { WETH_ADDRESSES } from 'src/shared/utils/constants/chains';
 import { RpcUrlConfig } from './entities/rpc-url-config.type';
-import { Address, zeroAddress } from 'viem';
-import { TokenData } from '../tokens/entities/token.type';
+import { Address } from 'viem';
+import { MobulaChain } from '../mobula/entities/mobula.entities';
 
 @Injectable()
 export class UniswapV3Service {
@@ -24,50 +22,27 @@ export class UniswapV3Service {
     }
   }
 
-  public async doesPoolExists({
-    tokenA,
-    tokenB,
-    poolFee = FeeAmount.MEDIUM,
-    network = 'mainnet',
-  }: {
-    tokenA: TokenData;
-    tokenB: TokenData;
-    poolFee?: FeeAmount;
-    network?: 'mainnet' | 'testnet';
-  }): Promise<boolean> {
-    const poolAddress = await this.getPoolAddress({
-      tokenA,
-      tokenB,
-      poolFee,
-      network,
-    });
-
-    return poolAddress !== zeroAddress;
-  }
-
   public async getPoolAddress({
+    chain,
     tokenA,
     tokenB,
     poolFee = FeeAmount.MEDIUM,
     network = 'mainnet',
   }: {
-    tokenA: TokenData;
-    tokenB: TokenData;
+    chain: MobulaChain;
+    tokenA: Address | string;
+    tokenB: Address | string;
     poolFee?: FeeAmount;
     network?: 'mainnet' | 'testnet';
   }): Promise<Address> {
     try {
-      const chainInfo = isWethToken(tokenA)
-        ? extractTokenChains(tokenB)[0]
-        : extractTokenChains(tokenA)[0];
-
-      const factoryAddress = UNISWAP_V3_FACTORY[chainInfo.name];
+      const factoryAddress = UNISWAP_V3_FACTORY[chain];
 
       if (!factoryAddress) {
         return ethers.ZeroAddress as Address;
       }
 
-      const rpcUrl = this.getRpcUrl(chainInfo.name, network);
+      const rpcUrl = this.getRpcUrl(chain, network);
       const provider = new ethers.JsonRpcProvider(rpcUrl);
 
       const factory = new ethers.Contract(
@@ -76,23 +51,7 @@ export class UniswapV3Service {
         provider,
       );
 
-      const tokenAAddress = isWethToken(tokenA)
-        ? WETH_ADDRESSES[chainInfo.name]
-        : tokenA.metadata.contract_addresses[chainInfo.name]?.contract_address;
-
-      const tokenBAddress = isWethToken(tokenB)
-        ? WETH_ADDRESSES[chainInfo.name]
-        : tokenB.metadata.contract_addresses[chainInfo.name]?.contract_address;
-
-      if (!tokenAAddress || !tokenBAddress) {
-        throw new Error('One token contract address is not found');
-      }
-
-      const poolAddress = await factory.getPool(
-        tokenAAddress,
-        tokenBAddress,
-        poolFee,
-      );
+      const poolAddress = await factory.getPool(tokenA, tokenB, poolFee);
 
       return poolAddress;
     } catch (error) {
@@ -102,7 +61,7 @@ export class UniswapV3Service {
   }
 
   private getRpcUrl(
-    chainName: string,
+    chainName: MobulaChain,
     network: 'mainnet' | 'testnet' = 'mainnet',
   ): string {
     const rpcUrl = this.config.rpcUrls[network][chainName];

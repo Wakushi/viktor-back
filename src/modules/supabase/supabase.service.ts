@@ -6,41 +6,58 @@ import {
   QueryFunctions,
   TokenMarketObservationMatchResult,
 } from './entities/collections.type';
-import { TokenMetadata } from '../tokens/entities/token.type';
 import { TradingDecision } from '../agent/entities/trading-decision.type';
 import {
   FormattedAnalysisResult,
   TokenAnalysisResult,
 } from '../agent/entities/analysis-result.type';
+import {
+  formatAnalysisResults,
+  formatWeekAnalysisResults,
+} from 'src/shared/utils/helpers';
+import { MobulaExtendedToken } from '../mobula/entities/mobula.entities';
+import {
+  SimilarWeekObservation,
+  WeekObservation,
+} from '../analysis/entities/week-observation.type';
+import { TokenWeekAnalysisResult } from '../analysis/entities/analysis.type';
 
 @Injectable()
 export class SupabaseService {
   private _client: SupabaseClient<any, 'public', any>;
+  private _cloudClient: SupabaseClient<any, 'public', any>;
 
   private readonly BATCH_SIZE = 100;
 
   constructor(
     @Inject('SUPABASE_CONFIG')
-    private readonly config: { privateKey: string; url: string },
+    private readonly config: {
+      privateKey: string;
+      url: string;
+      cloudPrivateKey: string;
+      cloudUrl: string;
+    },
   ) {
-    const { privateKey, url } = config;
+    const { privateKey, url, cloudPrivateKey, cloudUrl } = config;
 
     if (!privateKey) throw new Error(`Expected env var SUPABASE_API_KEY`);
     if (!url) throw new Error(`Expected env var SUPABASE_URL`);
 
     this._client = createClient(url, privateKey);
+    this._cloudClient = createClient(cloudUrl, cloudPrivateKey);
   }
 
   private get client(): SupabaseClient<any, 'public', any> {
     return this._client;
   }
 
-  public async insertMarketObservationEmbedding(
-    marketObservationEmbedding: Omit<MarketObservationEmbedding, 'id'>,
-  ): Promise<MarketObservationEmbedding> {
-    return this.insertSingle<MarketObservationEmbedding>(
-      Collection.MARKET_OBSERVATIONS,
-      marketObservationEmbedding,
+  public async insertManyWeekObservations(
+    weekObservations: Omit<WeekObservation, 'id'>[],
+  ): Promise<WeekObservation[]> {
+    return this.batchInsert<WeekObservation>(
+      Collection.WEEK_OBSERVATIONS,
+      weekObservations,
+      { progressLabel: 'week observations' },
     );
   }
 
@@ -51,15 +68,6 @@ export class SupabaseService {
       Collection.MARKET_OBSERVATIONS,
       marketObservationEmbedding,
       { progressLabel: 'market observations' },
-    );
-  }
-
-  public async insertTradingDecision(
-    decision: Omit<TradingDecision, 'id'>,
-  ): Promise<TradingDecision> {
-    return this.insertSingle<TradingDecision>(
-      Collection.TRADING_DECISIONS,
-      decision,
     );
   }
 
@@ -98,33 +106,29 @@ export class SupabaseService {
     return data ? (data as TokenMarketObservationMatchResult[]) : [];
   }
 
-  public async getTokenMetadataById(id: string): Promise<TokenMetadata | null> {
-    try {
-      const { data, error } = await this.client
-        .from(Collection.TOKEN_METADATA)
-        .select('*')
-        .eq('id', id)
-        .maybeSingle();
-
-      if (error) throw error;
-
-      return data;
-    } catch (error) {
-      console.error('Error fetching token metadata:', error);
-      return null;
-    }
-  }
-
-  public async insertTokenMetadata(metadata: TokenMetadata): Promise<void> {
-    const { error } = await this.client
-      .from(Collection.TOKEN_METADATA)
-      .upsert(metadata);
+  public async matchWeekObservations({
+    queryEmbedding,
+    matchThreshold,
+    matchCount,
+  }: {
+    queryEmbedding: any;
+    matchThreshold: number;
+    matchCount: number;
+  }): Promise<SimilarWeekObservation[]> {
+    const { data, error } = await this.client.rpc(
+      QueryFunctions.WEEK_OBSERVATIONS,
+      {
+        query_embedding: queryEmbedding,
+        match_threshold: matchThreshold,
+        match_count: matchCount,
+      },
+    );
 
     if (error) {
-      throw error;
+      throw new SupabaseError('Failed to match week observations', error);
     }
 
-    console.log(`Inserted ${metadata.id} metadata row`);
+    return data ? (data as SimilarWeekObservation[]) : [];
   }
 
   public async getTokensMetadata() {
@@ -134,12 +138,43 @@ export class SupabaseService {
         .select('*');
 
       if (error) {
-        throw new SupabaseError('Failed to fetch analysis results', error);
+        throw new SupabaseError('Failed to fetch tokens metadata', error);
       }
 
       return data;
     } catch (error) {
-      console.error('Error fetching analysis results:', error);
+      console.error('Error fetching tokens metadata:', error);
+      return null;
+    }
+  }
+
+  public async getWeekObservations(): Promise<WeekObservation[]> {
+    try {
+      const { data, error } = await this.client
+        .from(Collection.WEEK_OBSERVATIONS)
+        .select(
+          `
+            id,
+            token_name,
+            start_date,
+            end_date,
+            observation_text,
+            embedding,
+            raw_ohlcv_window,
+            next_day_close,
+            next_day_change,
+            outcome,
+            created_at
+          `,
+        );
+
+      if (error) {
+        throw new SupabaseError('Failed to fetch week observations', error);
+      }
+
+      return data;
+    } catch (error) {
+      console.error('Error fetching week observations:', error);
       return null;
     }
   }
@@ -147,38 +182,34 @@ export class SupabaseService {
   public async getDecisionByMarketObservationId(
     marketObservationId: number,
   ): Promise<TradingDecision | null> {
-    try {
-      const { data, error } = await this.client
-        .from(Collection.TRADING_DECISIONS)
-        .select('*')
-        .eq('observation_id', marketObservationId)
-        .maybeSingle();
+    const { data, error } = await this.client
+      .from(Collection.TRADING_DECISIONS)
+      .select('*')
+      .eq('observation_id', marketObservationId)
+      .maybeSingle();
 
-      if (error) {
-        throw new SupabaseError('Failed to fetch trading decision', error);
-      }
-
-      return data;
-    } catch (error) {
-      console.error('Error fetching trading decision:', error);
-      return null;
+    if (error) {
+      throw new SupabaseError('Failed to fetch trading decision', error);
     }
+
+    return data;
   }
 
   public async insertAnalysisResult(
     analysisResult: Omit<FormattedAnalysisResult, 'id'>,
+    collection: Collection,
   ): Promise<void> {
-    this.insertSingle<FormattedAnalysisResult>(
-      Collection.ANALYSIS_RESULTS,
-      analysisResult,
-    );
+    this.insertSingle<FormattedAnalysisResult>(collection, analysisResult);
   }
 
-  public async getAnalysisResults():Promise<FormattedAnalysisResult[] | null> {
+  public async getAnalysisResults(
+    collection: Collection,
+    fromCloud = false,
+  ): Promise<FormattedAnalysisResult[] | null> {
+    const client = fromCloud ? this._cloudClient : this.client;
+
     try {
-      const { data, error } = await this.client
-        .from(Collection.ANALYSIS_RESULTS)
-        .select('*');
+      const { data, error } = await client.from(collection).select('*');
 
       if (error) {
         throw new SupabaseError('Failed to fetch analysis results', error);
@@ -193,13 +224,14 @@ export class SupabaseService {
 
   public async getAnalysisResultsByDate(
     date: Date,
+    collection: Collection,
   ): Promise<FormattedAnalysisResult> {
     try {
       const startOfDate = new Date(date.setHours(0, 0, 0, 0)).toISOString();
       const endOfDate = new Date(date.setHours(23, 59, 59, 999)).toISOString();
 
       const { data, error } = await this.client
-        .from(Collection.ANALYSIS_RESULTS)
+        .from(collection)
         .select('*')
         .gte('created_at', startOfDate)
         .lte('created_at', endOfDate)
@@ -220,11 +252,11 @@ export class SupabaseService {
     }
   }
 
-  public async updateAnalysisResults(analysis: FormattedAnalysisResult) {
-    this.updateSingle<FormattedAnalysisResult>(
-      Collection.ANALYSIS_RESULTS,
-      analysis,
-    );
+  public async updateAnalysisResults(
+    analysis: FormattedAnalysisResult,
+    collection: Collection,
+  ) {
+    this.updateSingle<FormattedAnalysisResult>(collection, analysis);
   }
 
   public async saveAnalysisResults(
@@ -233,28 +265,105 @@ export class SupabaseService {
   ): Promise<void> {
     if (!results.length) return;
 
-    const formattedResults: any[] = [];
+    const formattedResults = formatAnalysisResults(results, fearAndGreedIndex);
+    await this.insertAnalysisResult(
+      formattedResults,
+      Collection.ANALYSIS_RESULTS,
+    );
+  }
 
-    results.forEach((res) => {
-      formattedResults.push({
-        token: res.token.metadata.name,
-        price: `$${res.token.market.price_usd}`,
-        buyingConfidence: `${(res.buyingConfidence.score * 100).toFixed(2)}%`,
-      });
-    });
+  public async saveWeekAnalysisResults(
+    results: TokenWeekAnalysisResult[],
+    fearAndGreedIndex: string,
+  ): Promise<void> {
+    if (!results.length) return;
 
-    await this.insertAnalysisResult({
-      analysis: JSON.stringify(
-        {
-          formattedResults,
-          analysis: results,
-        },
-        null,
-        2,
-      ),
-      created_at: new Date(),
+    const formattedResults = formatWeekAnalysisResults(
+      results,
       fearAndGreedIndex,
-    });
+    );
+
+    await this.insertAnalysisResult(
+      formattedResults,
+      Collection.WEEK_ANALYSIS_RESULTS,
+    );
+  }
+
+  public async getMarketObservationsByToken(
+    symbol: string,
+  ): Promise<MobulaExtendedToken[]> {
+    const { data, error } = await this.client
+      .from(Collection.MARKET_OBSERVATIONS)
+      .select(
+        `
+    id,
+    key,
+    timestamp,
+    name,
+    symbol,
+    decimals,
+    logo,
+    rank,
+    price,
+    market_cap,
+    market_cap_diluted,
+    volume,
+    volume_change_24h,
+    volume_7d,
+    liquidity,
+    ath,
+    atl,
+    off_chain_volume,
+    is_listed,
+    price_change_1h,
+    price_change_24h,
+    price_change_7d,
+    price_change_1m,
+    price_change_1y,
+    total_supply,
+    circulating_supply,
+    extra,
+    contracts,
+    created_at,
+    token_id
+  `,
+      )
+      .eq('name', symbol);
+
+    if (error) {
+      throw new SupabaseError('Failed to fetch trading decision', error);
+    }
+
+    return data;
+  }
+
+  public async getWeekObservationsByToken(
+    tokenName: string,
+  ): Promise<WeekObservation[]> {
+    const { data, error } = await this.client
+      .from(Collection.WEEK_OBSERVATIONS)
+      .select(
+        `
+          id,
+          token_name,
+          start_date,
+          end_date,
+          observation_text,
+          embedding,
+          raw_ohlcv_window,
+          next_day_close,
+          next_day_change,
+          outcome,
+          created_at
+        `,
+      )
+      .eq('token_name', tokenName);
+
+    if (error) {
+      throw new SupabaseError('Failed to fetch week observations', error);
+    }
+
+    return data;
   }
 
   private async batchInsert<T extends object>(

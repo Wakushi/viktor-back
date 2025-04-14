@@ -12,6 +12,9 @@ export const envSchema = z.object({
   ANTHROPIC_API_KEY: z.string(),
   SUPABASE_URL: z.string(),
   SUPABASE_API_KEY: z.string(),
+  CLOUD_SUPABASE_URL: z.string(),
+  CLOUD_SUPABASE_API_KEY: z.string(),
+  MOBULA_API_KEY: z.string(),
 });
 
 export type EnvConfig = z.infer<typeof envSchema>;

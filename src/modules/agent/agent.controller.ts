@@ -1,8 +1,8 @@
-import { Controller, Post, HttpCode, Get } from '@nestjs/common';
+import { Controller, Post, HttpCode, Get, Query } from '@nestjs/common';
 import { AgentService } from './agent.service';
-
 import { TokenAnalysisResult } from './entities/analysis-result.type';
 import { SupabaseService } from '../supabase/supabase.service';
+import { Collection } from '../supabase/entities/collections.type';
 
 @Controller('agent')
 export class AgentController {
@@ -17,22 +17,25 @@ export class AgentController {
     const analysisResults: TokenAnalysisResult[] =
       await this.agentService.seekMarketBuyingTargets();
 
-    console.log('Fetching fear and greed index..');
-
     const fearAndGreedIndex = await this.agentService.getFearAndGreed();
-
-    console.log('Saving results..');
 
     this.supabaseService.saveAnalysisResults(
       analysisResults,
       fearAndGreedIndex,
     );
+
+    return analysisResults;
   }
 
   @Get('analysis')
   @HttpCode(200)
-  async getAnalysisHistory() {
-    const results = await this.supabaseService.getAnalysisResults();
+  async getAnalysisHistory(@Query() query: { fromCloud?: string }) {
+    const fromCloud = query.fromCloud === 'true';
+
+    const results = await this.supabaseService.getAnalysisResults(
+      Collection.ANALYSIS_RESULTS,
+      fromCloud,
+    );
 
     if (!results) return;
 
