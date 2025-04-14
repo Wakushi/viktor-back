@@ -1,10 +1,9 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { Cron, CronExpression } from '@nestjs/schedule';
-import { TokenAnalysisResult } from '../agent/entities/analysis-result.type';
 import { SupabaseService } from '../supabase/supabase.service';
-import { AgentService } from '../agent/agent.service';
 import { AnalysisService } from '../analysis/analysis.service';
 import { TokenWeekAnalysisResult } from '../analysis/entities/analysis.type';
+import { PuppeteerService } from 'src/shared/services/puppeteer.service';
 
 @Injectable()
 export class CronService {
@@ -12,39 +11,9 @@ export class CronService {
 
   constructor(
     private readonly supabaseService: SupabaseService,
-    private readonly agentService: AgentService,
+    private readonly puppeteerService: PuppeteerService,
     private readonly analysisService: AnalysisService,
   ) {}
-
-  @Cron(CronExpression.EVERY_DAY_AT_10AM)
-  async handleAnalysisJob() {
-    const start = Date.now();
-
-    this.logger.log('Evaluating past analysis...');
-
-    await this.agentService.evaluatePastAnalysis();
-
-    this.logger.log(
-      'Evaluated past analysis performances. Starting analysis task...',
-    );
-
-    const analysisResults: TokenAnalysisResult[] =
-      await this.agentService.seekMarketBuyingTargets();
-
-    this.logger.log('Fetching fear and greed index..');
-
-    const fearAndGreedIndex = await this.agentService.getFearAndGreed();
-
-    this.logger.log('Saving results..');
-
-    this.supabaseService.saveAnalysisResults(
-      analysisResults,
-      fearAndGreedIndex,
-    );
-
-    const duration = Date.now() - start;
-    this.logger.log(`Analysis task completed in ${duration}ms`);
-  }
 
   @Cron(CronExpression.EVERY_DAY_AT_9AM)
   async handleWeekBasedAnalysisJob() {
@@ -64,11 +33,11 @@ export class CronService {
 
       this.logger.log('Fetching fear and greed index..');
 
-      const fearAndGreedIndex = await this.agentService.getFearAndGreed();
+      const fearAndGreedIndex = await this.puppeteerService.getFearAndGreed();
 
       this.logger.log('Saving results..');
 
-      this.supabaseService.saveWeekAnalysisResults(
+      this.supabaseService.saveWeekAnalysisRecords(
         analysisResults,
         fearAndGreedIndex,
       );

@@ -1,4 +1,4 @@
-import { DailyOHLCV } from 'src/modules/training/entities/coincodex.type';
+import { DailyOHLCV } from 'src/modules/tokens/entities/coin-codex.type';
 
 export const MINIMUM_METRICS_DAYS = 10;
 export const ELEVEN_DAYS_MS = 11 * 24 * 60 * 60 * 1000;

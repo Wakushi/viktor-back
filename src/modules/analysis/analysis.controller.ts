@@ -21,7 +21,7 @@ export class AnalysisController {
   @Get()
   @HttpCode(200)
   async getAnalysisHistory() {
-    const results = await this.supabaseService.getAnalysisResults(
+    const results = await this.supabaseService.getAnalysisRecords(
       Collection.WEEK_ANALYSIS_RESULTS,
     );
 

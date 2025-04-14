@@ -3,7 +3,7 @@ import * as puppeteer from 'puppeteer';
 import * as fs from 'fs';
 import * as path from 'path';
 import { formatDateToDDMMYYYY } from '../utils/helpers';
-import { CoinCodexBaseTokenData } from 'src/modules/training/entities/coincodex.type';
+import { CoinCodexBaseTokenData } from 'src/modules/tokens/entities/coin-codex.type';
 
 @Injectable()
 export class PuppeteerService {
