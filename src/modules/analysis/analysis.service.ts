@@ -83,6 +83,8 @@ export class AnalysisService {
 
     const analysisResults: TokenWeekAnalysisResult[] = [];
 
+    const MINIMUM_CONFIDENCE = 0.7;
+
     let batchSize = 5;
     let batchCounter = 1;
 
@@ -141,8 +143,6 @@ export class AnalysisService {
         tokens.push(...batch);
       }
     }
-
-    const MINIMUM_CONFIDENCE = 0.5;
 
     await this.deleteOHLCVDirectory();
 
