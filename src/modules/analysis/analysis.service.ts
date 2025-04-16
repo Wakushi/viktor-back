@@ -11,7 +11,6 @@ import {
   MobulaExtendedToken,
   MobulaOHLCV,
 } from '../mobula/entities/mobula.entities';
-import { TokensService } from '../tokens/tokens.service';
 import {
   TokenPerformance,
   TokenWeekAnalysisResult,
@@ -28,7 +27,7 @@ import {
   ELEVEN_DAYS_MS,
 } from './helpers/text-generation';
 import { Collection } from '../supabase/entities/collections.type';
-import { fetchWithTimeout, getAllocationRatio } from './helpers/utils';
+import { getAllocationRatio } from './helpers/utils';
 import { getAddress, isAddress } from 'viem';
 import { SUPPORTED_CHAIN_IDS } from '../mobula/constants';
 import {
@@ -38,6 +37,8 @@ import {
 import { ANALYSIS_MOCK } from 'history/analysis-mock';
 import { FakeWalletSnapshot } from './entities/fake-wallet';
 import { Position } from './entities/position.type';
+import { fetchWithRetry } from './helpers/utils';
+import { TokensService } from '../tokens/tokens.service';
 const Fuse = require('fuse.js');
 
 @Injectable()
@@ -628,7 +629,7 @@ export class AnalysisService {
   private async initCoinCodexList(): Promise<void> {
     if (this.coinCodexList?.length) return;
 
-    this.coinCodexList = await fetchWithTimeout({
+    this.coinCodexList = await fetchWithRetry({
       url: 'https://coincodex.com/apps/coincodex/cache/all_coins.json',
     });
   }
