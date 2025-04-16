@@ -166,7 +166,7 @@ export class TrainingService {
   private async getCoinCodexIdentifier(tokenSymbol: string): Promise<string> {
     const url = 'https://coincodex.com/apps/coincodex/cache/all_coins.json';
 
-    const data: CoinCodexBaseTokenData[] = await this.fetchWithTimeout({ url });
+    const data: CoinCodexBaseTokenData[] = await this.fetchWithRetry({ url });
 
     const matchings = data.filter(
       (t) =>
@@ -182,7 +182,7 @@ export class TrainingService {
     return token ? token.symbol : '';
   }
 
-  private async fetchWithTimeout({
+  private async fetchWithRetry({
     url,
     options = {},
     timeout = 60000,

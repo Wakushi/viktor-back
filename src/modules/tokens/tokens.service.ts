@@ -16,6 +16,7 @@ import {
   USDC_ADDRESSES,
   WETH_ADDRESSES,
 } from 'src/shared/utils/constants/chains';
+import { STABLECOINS_ID_SET } from '../mobula/entities/stablecoins';
 
 const WHITELISTED_CHAINS = Array.from(Object.values(MobulaChain));
 
@@ -140,9 +141,8 @@ export class TokensService {
   private filterDiscoveredTokens(
     tokens: MobulaMultipleTokens[],
   ): MobulaMultipleTokens[] {
-    const isStableCoin = (identifier: string): boolean => {
-      return identifier?.toLowerCase().includes('usd');
-    };
+    const MIN_MARKET_CAP = 1000000;
+    const MIN_LIQUIDITY = 1000000;
 
     return tokens.filter((token) => {
       const { blockchains, contracts, liquidity, market_cap, symbol, name } =
@@ -151,12 +151,12 @@ export class TokensService {
       if (!blockchains?.length || !contracts?.length || !liquidity)
         return false;
 
-      if (isStableCoin(symbol) || isStableCoin(name)) return false;
+      if (STABLECOINS_ID_SET.has(token.id)) return false;
 
       if (!blockchains.some((chain) => WHITELISTED_CHAINS.includes(chain)))
         return false;
 
-      return market_cap > 1_000_000;
+      return market_cap > MIN_MARKET_CAP && liquidity > MIN_LIQUIDITY;
     });
   }
 

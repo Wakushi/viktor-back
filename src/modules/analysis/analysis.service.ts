@@ -31,7 +31,7 @@ import {
 } from './helpers/text-generation';
 import { Collection } from '../supabase/entities/collections.type';
 import { TokenPerformance } from '../agent/entities/analysis-result.type';
-import { fetchWithTimeout } from './helpers/utils';
+import { fetchWithRetry } from './helpers/utils';
 const Fuse = require('fuse.js');
 
 @Injectable()
@@ -622,7 +622,7 @@ export class AnalysisService {
   private async initCoinCodexList(): Promise<void> {
     if (this.coinCodexList?.length) return;
 
-    this.coinCodexList = await fetchWithTimeout({
+    this.coinCodexList = await fetchWithRetry({
       url: 'https://coincodex.com/apps/coincodex/cache/all_coins.json',
     });
   }

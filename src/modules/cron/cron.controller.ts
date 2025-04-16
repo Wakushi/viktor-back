@@ -14,6 +14,6 @@ export class CronController {
   @Post('week')
   @HttpCode(200)
   async runWeekAnalysisCron() {
-    await this.cronService.handleWeekAnalysisJob();
+    await this.cronService.handleWeekBasedAnalysisJob();
   }
 }
