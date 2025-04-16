@@ -63,4 +63,10 @@ export class AnalysisController {
 
     return await this.analysisService.trainAnalysis(tokenName);
   }
+
+  @Post('test')
+  @HttpCode(200)
+  async test() {
+    return await this.analysisService.test();
+  }
 }

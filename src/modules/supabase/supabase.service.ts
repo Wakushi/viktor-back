@@ -10,6 +10,7 @@ import {
   DayAnalysisRecord,
   TokenWeekAnalysisResult,
 } from '../analysis/entities/analysis.type';
+import { FakeWalletSnapshot } from '../analysis/entities/fake-wallet';
 
 @Injectable()
 export class SupabaseService {
@@ -60,7 +61,7 @@ export class SupabaseService {
     matchCount: number;
   }): Promise<SimilarWeekObservation[]> {
     const { data, error } = await this.client.rpc(
-      QueryFunctions.WEEK_OBSERVATIONS,
+      QueryFunctions.MATCH_WEEK_OBSERVATIONS,
       {
         query_embedding: queryEmbedding,
         match_threshold: matchThreshold,
@@ -214,6 +215,41 @@ export class SupabaseService {
     return data;
   }
 
+  public async getLatestFakeWalletSnapshot(): Promise<FakeWalletSnapshot | null> {
+    try {
+      const { data, error } = await this.client
+        .from(Collection.FAKE_WALLET)
+        .select('*')
+        .order('created_at', { ascending: false })
+        .limit(1)
+        .single();
+
+      if (error) {
+        throw new SupabaseError(
+          'Failed to fetch latest fake wallet snapshot',
+          error,
+        );
+      }
+
+      return data;
+    } catch (error) {
+      console.error('Error fetching latest fake wallet snapshot:', error);
+      return null;
+    }
+  }
+
+  public async insertFakeWalletSnapshot(
+    snapshot: Omit<FakeWalletSnapshot, 'id'>,
+  ): Promise<any> {
+    return this.insertSingle(Collection.FAKE_WALLET, snapshot);
+  }
+
+  public async updateFakeWalletSnapshot(
+    snapshot: FakeWalletSnapshot,
+  ): Promise<any> {
+    return this.updateSingle(Collection.FAKE_WALLET, snapshot);
+  }
+
   private async batchInsert<T extends object>(
     collection: Collection,
     items: Omit<T, 'id'>[],
@@ -257,7 +293,7 @@ export class SupabaseService {
     }
   }
 
-  private async insertSingle<T extends object>(
+  public async insertSingle<T extends object>(
     collection: Collection,
     item: Omit<T, 'id'>,
   ): Promise<T> {

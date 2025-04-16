@@ -36,3 +36,19 @@ export async function fetchWithTimeout({
     clearTimeout(id);
   }
 }
+
+export function getAllocationRatio(
+  avgConfidence: number,
+  fearAndGreed: number,
+) {
+  const MIN_RATIO = 0.3;
+  const MAX_RATIO = 1.0;
+  const allocationRatio = Math.max(
+    MIN_RATIO,
+    Math.min(MAX_RATIO, avgConfidence),
+  );
+
+  const normalizedSentiment = fearAndGreed / 100;
+  const adjustedRatio = allocationRatio * (0.5 + normalizedSentiment / 2);
+  return Math.min(1.0, Math.max(0.1, adjustedRatio));
+}

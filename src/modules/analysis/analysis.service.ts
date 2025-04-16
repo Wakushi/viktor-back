@@ -3,7 +3,6 @@ import { CsvService } from 'src/shared/services/csv.service';
 import { EmbeddingService } from '../embedding/embedding.service';
 import { SupabaseService } from '../supabase/supabase.service';
 import { PuppeteerService } from 'src/shared/services/puppeteer.service';
-
 import {
   SimilarWeekObservation,
   WeekObservation,
@@ -16,6 +15,7 @@ import { TokensService } from '../tokens/tokens.service';
 import {
   TokenPerformance,
   TokenWeekAnalysisResult,
+  TradersActivity,
   WeekAnalysis,
 } from './entities/analysis.type';
 import { findClosestInt } from 'src/shared/utils/helpers';
@@ -28,16 +28,16 @@ import {
   ELEVEN_DAYS_MS,
 } from './helpers/text-generation';
 import { Collection } from '../supabase/entities/collections.type';
-import { fetchWithTimeout } from './helpers/utils';
-import { getAddress } from 'viem';
-import {
-  BLACKLISTED_ADDRESSES,
-  SUPPORTED_CHAIN_IDS,
-} from '../mobula/constants';
+import { fetchWithTimeout, getAllocationRatio } from './helpers/utils';
+import { getAddress, isAddress } from 'viem';
+import { SUPPORTED_CHAIN_IDS } from '../mobula/constants';
 import {
   CoinCodexBaseTokenData,
   DailyOHLCV,
 } from '../tokens/entities/coin-codex.type';
+import { ANALYSIS_MOCK } from 'history/analysis-mock';
+import { FakeWalletSnapshot } from './entities/fake-wallet';
+import { Position } from './entities/position.type';
 const Fuse = require('fuse.js');
 
 @Injectable()
@@ -635,7 +635,7 @@ export class AnalysisService {
 
   public async compareTradersActivity(
     analysis: TokenWeekAnalysisResult[],
-  ): Promise<any> {
+  ): Promise<TradersActivity[]> {
     const traders = await this.mobulaService.getSmartMoney();
     const tradersAddresses = traders.map((t) => getAddress(t.wallet_address));
 
@@ -657,8 +657,6 @@ export class AnalysisService {
 
     await Promise.all(
       tradersAddresses.map(async (trader) => {
-        if (BLACKLISTED_ADDRESSES.includes(trader)) return;
-
         const trades = await this.mobulaService.getWalletTrades({
           wallet: trader,
           limit: 100,
@@ -667,164 +665,157 @@ export class AnalysisService {
         if (!trades) return;
 
         for (const trade of trades) {
-          if (!SUPPORTED_CHAIN_IDS.includes(trade.chain_id)) continue;
+          try {
+            if (!SUPPORTED_CHAIN_IDS.includes(trade.chain_id)) continue;
 
-          const tradeDate = new Date(trade.date);
+            const tradeDate = new Date(trade.date);
 
-          if (tradeDate.getTime() < scanStart) continue;
+            if (tradeDate.getTime() < scanStart) continue;
 
-          const token0 = getAddress(trade.token0_address);
-          const token1 = getAddress(trade.token1_address);
-          const tradeTokens = [token0, token1];
+            const token0 = getAddress(trade.token0_address);
+            const token1 = getAddress(trade.token1_address);
+            const tradeTokens = [token0, token1];
 
-          const tokenMatch = analysisTokens.find((t) =>
-            t.contracts.some((c) =>
-              tradeTokens.includes(getAddress(c.address)),
-            ),
-          );
+            const tokenMatch = analysisTokens.find((t) =>
+              t.contracts.some(
+                (c) =>
+                  isAddress(c.address) &&
+                  tradeTokens.includes(getAddress(c.address)),
+              ),
+            );
 
-          if (!tokenMatch) continue;
+            if (!tokenMatch) continue;
 
-          const contract = tokenMatch.contracts.find((c) => {
-            const contractAddress = getAddress(c.address);
-            return contractAddress === token0 || contractAddress === token1;
-          });
+            const contract = tokenMatch.contracts.find((c) => {
+              if (!isAddress(c.address)) return false;
 
-          const tokenAmountTraded =
-            getAddress(contract.address) === token0
-              ? trade.amount0
-              : trade.amount1;
+              const contractAddress = getAddress(c.address);
 
-          const hasBought = Number(tokenAmountTraded) > 0;
-
-          const tokenRatio = tokenTradeRatio.get(tokenMatch.tokenId);
-
-          if (!tokenRatio) {
-            tokenTradeRatio.set(tokenMatch.tokenId, {
-              bought: hasBought ? 1 : 0,
-              sold: hasBought ? 0 : 1,
+              return contractAddress === token0 || contractAddress === token1;
             });
-            continue;
-          }
 
-          if (hasBought) {
-            tokenRatio.bought++;
-          } else {
-            tokenRatio.sold++;
+            const tokenAmountTraded =
+              getAddress(contract.address) === token0
+                ? trade.amount0
+                : trade.amount1;
+
+            const hasBought = Number(tokenAmountTraded) > 0;
+
+            const tokenRatio = tokenTradeRatio.get(tokenMatch.tokenId);
+
+            if (!tokenRatio) {
+              tokenTradeRatio.set(tokenMatch.tokenId, {
+                bought: hasBought ? 1 : 0,
+                sold: hasBought ? 0 : 1,
+              });
+              continue;
+            }
+
+            if (hasBought) {
+              tokenRatio.bought++;
+            } else {
+              tokenRatio.sold++;
+            }
+          } catch (error) {
+            this.logger.error('Error analyzing trades: ', error);
           }
         }
       }),
     );
 
-    console.log('tokenTradeRatio: ', tokenTradeRatio);
-
-    // tokenTradeRatio:  Map(10) {
-    //   100007238 => { bought: 0, sold: 1 },
-    //   102499549 => { bought: 14, sold: 17 },
-    //   10486 => { bought: 2, sold: 2 },
-    //   100001656 => { bought: 3, sold: 5 },
-    //   540 => { bought: 0, sold: 14 },
-    //   102503855 => { bought: 18, sold: 25 },
-    //   3774 => { bought: 1, sold: 1 },
-    //   102502670 => { bought: 1, sold: 0 },
-    //   100635869 => { bought: 1, sold: 1 },
-    //   100002460 => { bought: 1, sold: 0 }
-    // }
-  }
-
-  public async performTrades(
-    analysis: TokenWeekAnalysisResult[],
-  ): Promise<void> {
-    // Fetch trading wallet balance
-  }
-
-  public async analyzeWarpcastPresence(
-    analysis: TokenWeekAnalysisResult[],
-    limit = 100,
-  ): Promise<void> {
-    const BASE_CHANNEL_URL = 'https://onchainsummer.xyz';
-    const FARCASTER_CHANNEL_URL =
-      'chain://eip155:7777777/erc721:0x4f86113fc3e9783cf3ec9a552cbb566716a57628';
-
-    const urls = [
-      `https://hub.pinata.cloud/v1/castsByParent?url=${FARCASTER_CHANNEL_URL}&reverse=true&pageSize=${limit}`,
-      `https://hub.pinata.cloud/v1/castsByParent?url=${BASE_CHANNEL_URL}&reverse=true&pageSize=${limit}`,
-    ];
-
-    const responses = await Promise.all(urls.map((url) => fetch(url)));
-
-    const allMessagesText: string[] = [];
-
-    for (const response of responses) {
-      if (!response.ok) {
-        this.logger.error('Error fetching Warpcast data..');
-        continue;
-      }
-
-      const { messages } = await response.json();
-      const texts = messages.map((m: FarcasterCast) => m.data.castAddBody.text);
-      allMessagesText.push(...texts);
-    }
-
-    const analysisTokens = analysis.map((a) => ({
-      tokenId: a.token.token_id,
-      name: a.token.name,
-      symbol: a.token.symbol,
+    return Array.from(tokenTradeRatio).map(([id, stats]) => ({
+      id,
+      bought: stats.bought,
+      sold: stats.sold,
     }));
+  }
 
-    const tokenMentions: Map<number, string[]> = new Map();
+  public async requestTokenBuy(
+    analysis: TokenWeekAnalysisResult[],
+    fearAndGreed: number,
+  ): Promise<void> {
+    if (!analysis?.length || !fearAndGreed) return;
 
-    for (const message of allMessagesText) {
-      const formatted = message.toLowerCase().replace(/\n/g, '');
-      const words = formatted.split(' ');
+    this.logger.log('Buying tokens...');
 
-      for (const token of analysisTokens) {
-        const { tokenId, name, symbol } = token;
+    const USDC_MOBULA_ID = 100012309;
 
-        if (
-          !words.includes(name.toLowerCase()) &&
-          !words.includes(`$${symbol.toLowerCase()}`)
-        ) {
-          continue;
-        }
+    const fakeWallet = await this.supabaseService.getLatestFakeWalletSnapshot();
+    const balanceUsd = fakeWallet.tokens[USDC_MOBULA_ID];
 
-        const mentions = tokenMentions.get(tokenId);
-
-        if (!mentions) {
-          tokenMentions.set(tokenId, [message]);
-          continue;
-        }
-
-        tokenMentions.set(tokenId, [...mentions, message]);
-      }
+    if (!balanceUsd || balanceUsd <= 0) {
+      this.logger.error('No USDC balance available');
+      return;
     }
 
-    // TO-DO Analyze each token mentions using a LLM to extract a global sentiment
-    console.log('tokenMentions: ', tokenMentions);
-  }
-}
+    const topResults = analysis.filter((a) => a.confidence >= 0.7);
 
-export interface FarcasterCast {
-  data: {
-    type: 'MESSAGE_TYPE_CAST_ADD';
-    fid: number;
-    timestamp: number;
-    network: 'FARCASTER_NETWORK_MAINNET' | string;
-    castAddBody: {
-      embedsDeprecated: any[];
-      mentions: number[];
-      parentUrl: string;
-      text: string;
-      mentionsPositions: number[];
-      embeds: {
-        url: string;
-      }[];
-      type: 'LONG_CAST' | string;
+    if (!topResults.length) return;
+
+    const totalConfidence = topResults.reduce(
+      (sum, curr) => sum + curr.confidence,
+      0,
+    );
+
+    const avgConfidence = totalConfidence / topResults.length;
+    const ratio = getAllocationRatio(avgConfidence, fearAndGreed);
+
+    const totalUsdToAllocate = balanceUsd * ratio;
+
+    const tokensAllocations = topResults.map((analysis) => {
+      const pct = analysis.confidence / totalConfidence;
+      const usdAmount = pct * totalUsdToAllocate;
+
+      const tokenPrice = analysis.token.price ?? 0;
+      const amountBought = tokenPrice > 0 ? usdAmount / tokenPrice : 0;
+
+      return {
+        token: analysis.token,
+        usdAmount,
+        amountBought,
+      };
+    });
+
+    const updatedTokens: Record<string, number> = {
+      ...fakeWallet.tokens,
     };
-  };
-  hash: string;
-  hashScheme: 'HASH_SCHEME_BLAKE3' | string;
-  signature: string;
-  signatureScheme: 'SIGNATURE_SCHEME_ED25519' | string;
-  signer: string;
+
+    updatedTokens[USDC_MOBULA_ID] -= totalUsdToAllocate;
+
+    for (const allocation of tokensAllocations) {
+      if (!updatedTokens[allocation.token.token_id]) {
+        updatedTokens[allocation.token.token_id] = 0;
+      }
+
+      updatedTokens[allocation.token.token_id] += allocation.amountBought;
+    }
+
+    const updatedFakeWallet: FakeWalletSnapshot = {
+      ...fakeWallet,
+      tokens: updatedTokens,
+    };
+
+    await this.supabaseService.updateFakeWalletSnapshot(updatedFakeWallet);
+
+    await Promise.all(
+      tokensAllocations.map((allocation) => {
+        return this.supabaseService.insertSingle<Position>(
+          Collection.POSITIONS,
+          {
+            token_id: allocation.token.token_id,
+            amount: allocation.amountBought,
+            bought_at_price: allocation.token.price,
+            bought_at_timestamp: new Date().toISOString(),
+            created_at: new Date(),
+          },
+        );
+      }),
+    );
+
+    this.logger.log(`Opened ${tokensAllocations.length} new positions ! `);
+  }
+
+  public async test() {
+    await this.requestTokenBuy(ANALYSIS_MOCK, 60);
+  }
 }

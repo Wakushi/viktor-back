@@ -44,3 +44,9 @@ export type DayAnalysisRecord = {
   performance?: string;
   fear_and_greed_index?: string;
 };
+
+export type TradersActivity = {
+  id: number;
+  bought: number;
+  sold: number;
+};
