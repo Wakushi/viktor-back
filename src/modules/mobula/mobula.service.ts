@@ -150,7 +150,7 @@ export class MobulaService {
     return data;
   }
 
-  public async getSmartMoney(): Promise<WalletStats[] | null> {
+  public async getSmartMoney(limit = 100): Promise<WalletStats[] | null> {
     const { data, error } = await this.makeRequest('/wallet/smart-money');
 
     if (error) {
@@ -164,16 +164,12 @@ export class MobulaService {
           !w.blockchains.includes(MobulaChain.SOLANA) &&
           (w.blockchains.includes(MobulaChain.ETHEREUM) ||
             w.blockchains.includes(MobulaChain.BASE)) &&
-          w.realized_pnl,
+          w.realized_pnl &&
+          w.realized_pnl < 10000000,
       )
-      .sort(
-        (a, b) =>
-          b.realized_pnl +
-          b.unrealized_pnl -
-          (a.realized_pnl + a.unrealized_pnl),
-      );
+      .sort((a, b) => b.realized_pnl - a.realized_pnl);
 
-    return filteredWallets;
+    return filteredWallets.slice(0, limit);
   }
 
   public async getWalletTrades({

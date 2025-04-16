@@ -21,7 +21,7 @@ export class AnalysisController {
   @Get()
   @HttpCode(200)
   async getAnalysisHistory() {
-    const results = await this.supabaseService.getAnalysisResults(
+    const results = await this.supabaseService.getAnalysisRecords(
       Collection.WEEK_ANALYSIS_RESULTS,
     );
 
@@ -62,5 +62,11 @@ export class AnalysisController {
     if (!tokenName) throw new BadRequestException('Missing token name');
 
     return await this.analysisService.trainAnalysis(tokenName);
+  }
+
+  @Post('test')
+  @HttpCode(200)
+  async test() {
+    return await this.analysisService.test();
   }
 }

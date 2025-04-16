@@ -6,15 +6,6 @@ import {
   VoyageEmbeddingResponse,
 } from 'src/modules/embedding/entities/voyage.type';
 import { SupabaseError, SupabaseService } from '../supabase/supabase.service';
-import { MarketObservationEmbedding } from './entities/embedding.type';
-import {
-  calculateNormalizedMetrics,
-  combineNarratives,
-  generateEnhancedSignalDescription,
-  generateMarketNarratives,
-} from './helpers/market-data-formatting';
-import { TokenMarketObservationMatchResult } from '../supabase/entities/collections.type';
-import { MobulaExtendedToken } from '../mobula/entities/mobula.entities';
 import { SimilarWeekObservation } from '../analysis/entities/week-observation.type';
 
 @Injectable()
@@ -33,31 +24,6 @@ export class EmbeddingService {
       apiKey: config.apiKey,
       model: config.model,
     };
-  }
-
-  public async generateMarketObservationEmbeddings(
-    tokens: MobulaExtendedToken[],
-  ): Promise<Omit<MarketObservationEmbedding, 'id'>[]> {
-    const observationsText: string[] = tokens.map((token) =>
-      this.getEmbeddingTextFromObservation(token),
-    );
-
-    const observationsEmbeddings =
-      await this.createEmbeddings(observationsText);
-
-    const marketObservationEmbeddings: Omit<
-      MarketObservationEmbedding,
-      'id'
-    >[] = [];
-
-    observationsEmbeddings.forEach((observationEmbedding, i) => {
-      marketObservationEmbeddings.push({
-        ...tokens[i],
-        embedding: observationEmbedding.embedding,
-      });
-    });
-
-    return marketObservationEmbeddings;
   }
 
   public async createEmbeddings(
@@ -125,62 +91,6 @@ export class EmbeddingService {
       return embeddingResults;
     } catch (error) {
       this.handleCreateEmbeddingError(error);
-    }
-  }
-
-  public getEmbeddingTextFromObservation(token: MobulaExtendedToken): string {
-    const normalized = calculateNormalizedMetrics(token);
-
-    const narratives = generateMarketNarratives(token, normalized);
-    const narrativeText = combineNarratives(narratives, token);
-
-    const signalText = generateEnhancedSignalDescription(token, normalized);
-
-    return `${narrativeText} [SIGNALS] ${signalText}`;
-  }
-
-  public async findNearestMatch({
-    query,
-    matchThreshold,
-    matchCount,
-  }: {
-    query: any;
-    matchThreshold: number;
-    matchCount: number;
-  }): Promise<TokenMarketObservationMatchResult[]> {
-    try {
-      this.verifyQuery(query);
-
-      const embeddings = await this.createEmbeddings([query]);
-
-      if (!embeddings || embeddings.length === 0) {
-        throw new ValidationError('No embeddings generated for query');
-      }
-
-      const matchingMarketObservations =
-        await this.supabaseService.matchMarketObservations({
-          queryEmbedding: embeddings[0].embedding,
-          matchThreshold,
-          matchCount,
-        });
-
-      return matchingMarketObservations;
-    } catch (error) {
-      console.error('Error in findNearestMatch:', error);
-
-      if (
-        error instanceof ValidationError ||
-        error instanceof VoyageAPIError ||
-        error instanceof SupabaseError
-      ) {
-        throw error;
-      }
-
-      throw new Error(
-        `Unexpected error in findNearestMatch: ${
-          error instanceof Error ? error.message : 'Unknown error'
-        }`,
-      );
     }
   }
 

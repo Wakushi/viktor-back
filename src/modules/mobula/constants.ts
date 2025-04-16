@@ -1,5 +1,1 @@
-export const BLACKLISTED_ADDRESSES = [
-  '0x097c99e94Efe24C79Ba434cE15CEcCc788190D38',
-];
-
 export const SUPPORTED_CHAIN_IDS = ['evm:1', 'evm:8453'];
