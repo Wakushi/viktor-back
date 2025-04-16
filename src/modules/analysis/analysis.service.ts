@@ -35,7 +35,6 @@ import {
   CoinCodexBaseTokenData,
   DailyOHLCV,
 } from '../tokens/entities/coin-codex.type';
-import { ANALYSIS_MOCK } from 'history/analysis-mock';
 import { FakeWalletSnapshot } from './entities/fake-wallet';
 import { Position } from './entities/position.type';
 import { fetchWithRetry } from './helpers/utils';
@@ -815,9 +814,7 @@ export class AnalysisService {
     this.logger.log(`Opened ${tokensAllocations.length} new positions ! `);
   }
 
-  public async test() {
-    await this.requestTokenBuy(ANALYSIS_MOCK, 60);
-  }
+  public async test() {}
 
   private async insertManyWeekObservations(
     weekObservations: Omit<WeekObservation, 'id'>[],
