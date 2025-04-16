@@ -8,20 +8,16 @@ import {
   Post,
 } from '@nestjs/common';
 import { AnalysisService } from './analysis.service';
-import { SupabaseService } from '../supabase/supabase.service';
 import { Collection } from '../supabase/entities/collections.type';
 
 @Controller('analysis')
 export class AnalysisController {
-  constructor(
-    private readonly analysisService: AnalysisService,
-    private readonly supabaseService: SupabaseService,
-  ) {}
+  constructor(private readonly analysisService: AnalysisService) {}
 
   @Get()
   @HttpCode(200)
   async getAnalysisHistory() {
-    const results = await this.supabaseService.getAnalysisRecords(
+    const results = await this.analysisService.getAnalysisRecords(
       Collection.WEEK_ANALYSIS_RESULTS,
     );
 
@@ -39,7 +35,7 @@ export class AnalysisController {
   @Get('tokens')
   @HttpCode(200)
   async getWeekObservationsTokens() {
-    const observations = await this.supabaseService.getWeekObservations();
+    const observations = await this.analysisService.getWeekObservations();
 
     if (!observations) throw new InternalServerErrorException();
 

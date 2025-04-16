@@ -66,7 +66,7 @@ export class TokensService {
     }
   }
 
-  public async discoverTokens(limit = 200): Promise<MobulaExtendedToken[]> {
+  public async discoverTokens(limit = 300): Promise<MobulaExtendedToken[]> {
     this.logger.log(`Initiating token discovery (max ${limit})`);
 
     const tokenSocials: Map<number, MobulaTokenSocials> = new Map();
@@ -151,7 +151,12 @@ export class TokensService {
       if (!blockchains?.length || !contracts?.length || !liquidity)
         return false;
 
-      if (STABLECOINS_ID_SET.has(token.id)) return false;
+      if (
+        STABLECOINS_ID_SET.has(token.id) ||
+        name.toLowerCase().includes('usd') ||
+        symbol.toLowerCase().includes('usd')
+      )
+        return false;
 
       if (!blockchains.some((chain) => WHITELISTED_CHAINS.includes(chain)))
         return false;

@@ -3,12 +3,7 @@ import { SupabaseService } from './supabase.service';
 
 @Module({})
 export class SupabaseModule {
-  static forRoot(config: {
-    privateKey: string;
-    url: string;
-    cloudPrivateKey: string;
-    cloudUrl: string;
-  }): DynamicModule {
+  static forRoot(config: { privateKey: string; url: string }): DynamicModule {
     return {
       module: SupabaseModule,
       providers: [

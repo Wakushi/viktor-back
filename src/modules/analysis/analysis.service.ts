@@ -1,7 +1,7 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { CsvService } from 'src/shared/services/csv.service';
 import { EmbeddingService } from '../embedding/embedding.service';
-import { SupabaseService } from '../supabase/supabase.service';
+import { SupabaseError, SupabaseService } from '../supabase/supabase.service';
 import { PuppeteerService } from 'src/shared/services/puppeteer.service';
 import {
   SimilarWeekObservation,
@@ -12,6 +12,7 @@ import {
   MobulaOHLCV,
 } from '../mobula/entities/mobula.entities';
 import {
+  DayAnalysisRecord,
   TokenPerformance,
   TokenWeekAnalysisResult,
   TradersActivity,
@@ -330,7 +331,7 @@ export class AnalysisService {
         weekObservations.push(weekObservation);
       }
 
-      await this.supabaseService.insertManyWeekObservations(weekObservations);
+      await this.insertManyWeekObservations(weekObservations);
     } catch (error) {
       this.logger.error('Error training analysis: ' + error);
     }
@@ -362,8 +363,7 @@ export class AnalysisService {
       const { name, shortname, ccu_slug, symbol } = coinCodexToken;
 
       if (fromLastTraining) {
-        const history =
-          await this.supabaseService.getWeekObservationsByToken(tokenName);
+        const history = await this.getWeekObservationsByToken(tokenName);
 
         if (history?.length) {
           history?.sort(
@@ -563,11 +563,10 @@ export class AnalysisService {
       const yesterday = new Date();
       yesterday.setDate(yesterday.getDate() - 1);
 
-      const formattedAnalysis =
-        await this.supabaseService.getAnalysisRecordByDate(
-          date || yesterday,
-          Collection.WEEK_ANALYSIS_RESULTS,
-        );
+      const formattedAnalysis = await this.getAnalysisRecordByDate(
+        date || yesterday,
+        Collection.WEEK_ANALYSIS_RESULTS,
+      );
 
       if (!formattedAnalysis) return;
 
@@ -613,12 +612,12 @@ export class AnalysisService {
 
       this.logger.log('Saving performances..');
 
-      this.supabaseService.updateAnalysisRecord(
+      this.supabaseService.updateSingle<DayAnalysisRecord>(
+        Collection.WEEK_ANALYSIS_RESULTS,
         {
           ...formattedAnalysis,
           performance: stringifiedPerformance,
         },
-        Collection.WEEK_ANALYSIS_RESULTS,
       );
     } catch (error) {
       this.logger.error("Failed to evaluate yesterday's analysis");
@@ -741,7 +740,7 @@ export class AnalysisService {
 
     const USDC_MOBULA_ID = 100012309;
 
-    const fakeWallet = await this.supabaseService.getLatestFakeWalletSnapshot();
+    const fakeWallet = await this.getLatestFakeWalletSnapshot();
     const balanceUsd = fakeWallet.tokens[USDC_MOBULA_ID];
 
     if (!balanceUsd || balanceUsd <= 0) {
@@ -796,7 +795,7 @@ export class AnalysisService {
       tokens: updatedTokens,
     };
 
-    await this.supabaseService.updateFakeWalletSnapshot(updatedFakeWallet);
+    await this.updateFakeWalletSnapshot(updatedFakeWallet);
 
     await Promise.all(
       tokensAllocations.map((allocation) => {
@@ -818,5 +817,159 @@ export class AnalysisService {
 
   public async test() {
     await this.requestTokenBuy(ANALYSIS_MOCK, 60);
+  }
+
+  private async insertManyWeekObservations(
+    weekObservations: Omit<WeekObservation, 'id'>[],
+  ): Promise<WeekObservation[]> {
+    return this.supabaseService.batchInsert<WeekObservation>(
+      Collection.WEEK_OBSERVATIONS,
+      weekObservations,
+      { progressLabel: 'week observations' },
+    );
+  }
+
+  public async getWeekObservations(): Promise<WeekObservation[]> {
+    try {
+      const { data, error } = await this.supabaseService.client
+        .from(Collection.WEEK_OBSERVATIONS)
+        .select(
+          `
+              id,
+              token_name,
+              start_date,
+              end_date,
+              observation_text,
+              embedding,
+              raw_ohlcv_window,
+              next_day_close,
+              next_day_change,
+              outcome,
+              created_at
+            `,
+        );
+
+      if (error) {
+        throw new SupabaseError('Failed to fetch week observations', error);
+      }
+
+      return data;
+    } catch (error) {
+      console.error('Error fetching week observations:', error);
+      return null;
+    }
+  }
+
+  public async getAnalysisRecords(
+    collection: Collection,
+  ): Promise<DayAnalysisRecord[] | null> {
+    try {
+      const { data, error } = await this.supabaseService.client
+        .from(collection)
+        .select('*');
+
+      if (error) {
+        throw new SupabaseError('Failed to fetch analysis results', error);
+      }
+
+      return data;
+    } catch (error) {
+      console.error('Error fetching analysis results:', error);
+      return null;
+    }
+  }
+
+  public async getAnalysisRecordByDate(
+    date: Date,
+    collection: Collection,
+  ): Promise<DayAnalysisRecord> {
+    try {
+      const startOfDate = new Date(date.setHours(0, 0, 0, 0)).toISOString();
+      const endOfDate = new Date(date.setHours(23, 59, 59, 999)).toISOString();
+
+      const { data, error } = await this.supabaseService.client
+        .from(collection)
+        .select('*')
+        .gte('created_at', startOfDate)
+        .lte('created_at', endOfDate)
+        .limit(1)
+        .single();
+
+      if (error) {
+        throw new SupabaseError(
+          "Failed to fetch yesterday's analysis results",
+          error,
+        );
+      }
+
+      return data;
+    } catch (error) {
+      console.error("Error fetching yesterday's analysis results:", error);
+      return null;
+    }
+  }
+
+  public async getWeekObservationsByToken(
+    tokenName: string,
+  ): Promise<WeekObservation[]> {
+    const { data, error } = await this.supabaseService.client
+      .from(Collection.WEEK_OBSERVATIONS)
+      .select(
+        `
+          id,
+          token_name,
+          start_date,
+          end_date,
+          observation_text,
+          embedding,
+          raw_ohlcv_window,
+          next_day_close,
+          next_day_change,
+          outcome,
+          created_at
+        `,
+      )
+      .eq('token_name', tokenName);
+
+    if (error) {
+      throw new SupabaseError('Failed to fetch week observations', error);
+    }
+
+    return data;
+  }
+
+  public async getLatestFakeWalletSnapshot(): Promise<FakeWalletSnapshot | null> {
+    try {
+      const { data, error } = await this.supabaseService.client
+        .from(Collection.FAKE_WALLET)
+        .select('*')
+        .order('created_at', { ascending: false })
+        .limit(1)
+        .single();
+
+      if (error) {
+        throw new SupabaseError(
+          'Failed to fetch latest fake wallet snapshot',
+          error,
+        );
+      }
+
+      return data;
+    } catch (error) {
+      console.error('Error fetching latest fake wallet snapshot:', error);
+      return null;
+    }
+  }
+
+  public async insertFakeWalletSnapshot(
+    snapshot: Omit<FakeWalletSnapshot, 'id'>,
+  ): Promise<any> {
+    return this.supabaseService.insertSingle(Collection.FAKE_WALLET, snapshot);
+  }
+
+  public async updateFakeWalletSnapshot(
+    snapshot: FakeWalletSnapshot,
+  ): Promise<any> {
+    return this.supabaseService.updateSingle(Collection.FAKE_WALLET, snapshot);
   }
 }

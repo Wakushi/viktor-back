@@ -7,6 +7,7 @@ import {
 } from 'src/modules/embedding/entities/voyage.type';
 import { SupabaseError, SupabaseService } from '../supabase/supabase.service';
 import { SimilarWeekObservation } from '../analysis/entities/week-observation.type';
+import { QueryFunctions } from '../supabase/entities/collections.type';
 
 @Injectable()
 export class EmbeddingService {
@@ -112,12 +113,11 @@ export class EmbeddingService {
         throw new ValidationError('No embeddings generated for query');
       }
 
-      const matchingWeekObservations =
-        await this.supabaseService.matchWeekObservations({
-          queryEmbedding: embeddings[0].embedding,
-          matchThreshold,
-          matchCount,
-        });
+      const matchingWeekObservations = await this.matchWeekObservations({
+        queryEmbedding: embeddings[0].embedding,
+        matchThreshold,
+        matchCount,
+      });
 
       return matchingWeekObservations;
     } catch (error) {
@@ -184,6 +184,31 @@ export class EmbeddingService {
     if (query.trim().length === 0) {
       throw new ValidationError('Query cannot be empty or only whitespace');
     }
+  }
+
+  private async matchWeekObservations({
+    queryEmbedding,
+    matchThreshold,
+    matchCount,
+  }: {
+    queryEmbedding: any;
+    matchThreshold: number;
+    matchCount: number;
+  }): Promise<SimilarWeekObservation[]> {
+    const { data, error } = await this.supabaseService.client.rpc(
+      QueryFunctions.MATCH_WEEK_OBSERVATIONS,
+      {
+        query_embedding: queryEmbedding,
+        match_threshold: matchThreshold,
+        match_count: matchCount,
+      },
+    );
+
+    if (error) {
+      throw new SupabaseError('Failed to match week observations', error);
+    }
+
+    return data ? (data as SimilarWeekObservation[]) : [];
   }
 }
 

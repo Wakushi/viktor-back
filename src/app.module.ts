@@ -27,8 +27,6 @@ import { AnalysisModule } from './modules/analysis/analysis.module';
     SupabaseModule.forRoot({
       privateKey: process.env.SUPABASE_API_KEY,
       url: process.env.SUPABASE_URL,
-      cloudPrivateKey: process.env.CLOUD_SUPABASE_API_KEY,
-      cloudUrl: process.env.CLOUD_SUPABASE_URL,
     }),
     EmbeddingModule.forRoot({
       apiKey: process.env.VOYAGE_API_KEY,
