@@ -166,8 +166,8 @@ export class AnalysisService {
   private async analyzeToken(
     token: MobulaExtendedToken,
   ): Promise<TokenWeekAnalysisResult | null> {
-    const SIMILARITY_THRESHOLD = 0.5;
-    const MATCH_COUNT = 20;
+    const SIMILARITY_THRESHOLD = 0.7;
+    const MATCH_COUNT = 40;
 
     try {
       const fromTimestamp = Date.now() - ELEVEN_DAYS_MS;
