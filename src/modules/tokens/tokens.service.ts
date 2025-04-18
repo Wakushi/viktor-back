@@ -18,7 +18,7 @@ import {
 } from 'src/shared/utils/constants/chains';
 import { STABLECOINS_ID_SET } from '../mobula/entities/stablecoins';
 
-const WHITELISTED_CHAINS = Array.from(Object.values(MobulaChain));
+const WHITELISTED_CHAINS = [MobulaChain.BASE, MobulaChain.ETHEREUM];
 
 @Injectable()
 export class TokensService {
@@ -66,7 +66,7 @@ export class TokensService {
     }
   }
 
-  public async discoverTokens(limit = 300): Promise<MobulaExtendedToken[]> {
+  public async discoverTokens(limit = 500): Promise<MobulaExtendedToken[]> {
     this.logger.log(`Initiating token discovery (max ${limit})`);
 
     const tokenSocials: Map<number, MobulaTokenSocials> = new Map();
@@ -142,7 +142,7 @@ export class TokensService {
     tokens: MobulaMultipleTokens[],
   ): MobulaMultipleTokens[] {
     const MIN_MARKET_CAP = 1000000;
-    const MIN_LIQUIDITY = 1000000;
+    const MIN_LIQUIDITY = 300000;
 
     return tokens.filter((token) => {
       const { blockchains, contracts, liquidity, market_cap, symbol, name } =
@@ -165,35 +165,45 @@ export class TokensService {
     });
   }
 
-  private computeTokenScore(token: any): number {
-    const volatility = (() => {
-      const change = token.price_change_24h ?? 0;
-      const clamped = Math.min(Math.abs(change), 1000); // Max 1000%
-      return clamped / 100;
+  private computeTokenScore(token: MobulaExtendedToken): number {
+    const priceChange24h = token.price_change_24h ?? 0;
+    const volumeUSD = token.volume ?? 0;
+    const liquidityUSD = token.liquidity ?? 0;
+    const marketCapUSD = token.market_cap ?? 0;
+
+    const volatility = Math.min(Math.abs(priceChange24h), 200) / 100;
+
+    const volumeScore = Math.min(volumeUSD / 1_000_000, 1);
+
+    const liquidityScore =
+      liquidityUSD < 10_000 ? 0 : Math.min(liquidityUSD / 500_000, 1);
+
+    const marketCapScore = (() => {
+      if (marketCapUSD < 100_000) return 0;
+      if (marketCapUSD < 1_000_000) return 0.4;
+      if (marketCapUSD < 10_000_000) return 0.8;
+      if (marketCapUSD < 100_000_000) return 1;
+      if (marketCapUSD < 500_000_000) return 0.8;
+      return 0.6;
     })();
 
-    const volume = (() => {
-      const v = token.volume ?? 0;
-      return v > 0 ? Math.min(v / 1_000_000, 1) : 0;
-    })();
+    const hasTwitter = token.extra?.twitter ? 0.25 : 0;
+    const hasWebsite =
+      token.extra?.website && token.extra.website.includes('.') ? 0.25 : 0;
+    const socialScore = hasTwitter + hasWebsite;
 
-    const liquidity = (() => {
-      const l = token.liquidity ?? 0;
-      if (l < 1000) return 0;
-      return Math.min(l / 500_000, 1);
-    })();
+    const rugPenalty =
+      Math.abs(priceChange24h) > 90 && marketCapUSD < 1_000_000 ? 0.7 : 1;
 
-    const marketCap = (() => {
-      const cap = token.market_cap ?? 0;
-      if (cap <= 10_000) return 0;
-      if (cap <= 250_000) return 0.25;
-      if (cap <= 2_000_000) return 0.5;
-      if (cap <= 25_000_000) return 0.75;
-      if (cap <= 100_000_000) return 1;
-      return 0.5;
-    })();
+    const score =
+      (volatility * 1.5 +
+        volumeScore * 2 +
+        liquidityScore * 2 +
+        marketCapScore * 2 +
+        socialScore) *
+      rugPenalty;
 
-    return volatility * 2 + volume * 1.5 + liquidity * 2 + marketCap * 1;
+    return score;
   }
 
   private async filterTokenWithPools(

@@ -64,7 +64,7 @@ export class MobulaService {
   public async getTokenMultiData(
     tokenIds: number[],
   ): Promise<MobulaMultiDataToken[]> {
-    const BATCH_SIZE = 500;
+    const BATCH_SIZE = 300;
     const results: MobulaMultiDataToken[] = [];
     let batchCounter = 1;
 
@@ -74,7 +74,7 @@ export class MobulaService {
 
     while (tokenIds.length) {
       const batch = tokenIds.splice(0, BATCH_SIZE);
-      const endpoint = `/market/multi-data?ids=${batch.join(',')}`; //
+      const endpoint = `/market/multi-data?ids=${batch.join(',')}`;
 
       this.logger.log(
         `[getTokenMultiData] Processing batch ${batchCounter} (${tokenIds.length} entries left)`,
