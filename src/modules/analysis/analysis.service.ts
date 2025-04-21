@@ -157,8 +157,8 @@ export class AnalysisService {
       .filter(
         (analysis) =>
           analysis &&
-          analysis.prediction !== 'bearish' &&
-          analysis.confidence > MINIMUM_CONFIDENCE,
+          analysis.confidence > MINIMUM_CONFIDENCE &&
+          analysis.prediction !== 'bearish',
       )
       .sort((a, b) => b.confidence - a.confidence);
   }
