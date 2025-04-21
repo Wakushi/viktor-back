@@ -90,7 +90,7 @@ export class AnalysisService {
 
     const analysisResults: TokenWeekAnalysisResult[] = [];
 
-    const MINIMUM_CONFIDENCE = 0.5;
+    const MINIMUM_CONFIDENCE = 0.6;
 
     let batchSize = 5;
     let batchCounter = 1;
@@ -167,7 +167,7 @@ export class AnalysisService {
     token: MobulaExtendedToken,
   ): Promise<TokenWeekAnalysisResult | null> {
     const SIMILARITY_THRESHOLD = 0.7;
-    const MATCH_COUNT = 30;
+    const MATCH_COUNT = 40;
 
     try {
       const fromTimestamp = Date.now() - ELEVEN_DAYS_MS;
