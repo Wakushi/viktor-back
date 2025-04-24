@@ -6,6 +6,7 @@ export enum Collection {
   WEEK_ANALYSIS_RESULTS = 'week_analysis_results',
   FAKE_WALLET = 'fake_wallet',
   POSITIONS = 'positions',
+  SETTINGS = 'viktor_settings',
 }
 
 export enum QueryFunctions {

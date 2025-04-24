@@ -1,12 +1,8 @@
 import { MobulaChain } from 'src/modules/mobula/entities/mobula.entities';
 
 export type RpcUrlConfig = {
-  mainnet: {
-    [MobulaChain.ETHEREUM]: string;
-    [MobulaChain.BASE]: string;
-  };
-  testnet: {
-    [MobulaChain.ETHEREUM]: string;
-    [MobulaChain.BASE]: string;
-  };
+  [MobulaChain.ETHEREUM]: string;
+  [MobulaChain.BASE]: string;
+  [MobulaChain.ARBITRUM]: string;
+  [MobulaChain.BNB]: string;
 };

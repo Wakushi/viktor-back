@@ -39,6 +39,7 @@ import { FakeWalletSnapshot } from './entities/fake-wallet';
 import { Position } from './entities/position.type';
 import { fetchWithRetry } from './helpers/utils';
 import { TokensService } from '../tokens/tokens.service';
+import { LogGateway } from 'src/shared/services/log-gateway';
 const Fuse = require('fuse.js');
 
 @Injectable()
@@ -54,29 +55,27 @@ export class AnalysisService {
     private readonly puppeteerService: PuppeteerService,
     private readonly tokensService: TokensService,
     private readonly mobulaService: MobulaService,
+    private readonly logGateway: LogGateway,
   ) {}
 
   public async seekMarketBuyingTargets(): Promise<any> {
     try {
-      this.logger.log('Started token search...');
+      this.log('Started token search...');
 
       const tokens: MobulaExtendedToken[] =
         await this.tokensService.discoverTokens();
 
-      this.logger.log(
-        `Discovered ${tokens.length} tokens ! Starting analysis...`,
-      );
+      this.log(`Discovered ${tokens.length} tokens ! Starting analysis...`);
 
       const analysis: TokenWeekAnalysisResult[] =
         await this.analyzeTokens(tokens);
 
-      this.logger.log(
-        `Analysis completed ! ${analysis.length} results available.`,
-      );
+      this.log(`Analysis completed ! ${analysis.length} results available.`);
 
       return analysis;
     } catch (error) {
       console.error('Error while seeking market buying targets :', error);
+      await this.deleteOHLCVDirectory();
       return [];
     }
   }
@@ -84,7 +83,7 @@ export class AnalysisService {
   private async analyzeTokens(
     tokens: MobulaExtendedToken[],
   ): Promise<TokenWeekAnalysisResult[]> {
-    this.logger.log(`Initiating analysis of ${tokens.length} tokens...`);
+    this.log(`Initiating analysis of ${tokens.length} tokens...`);
 
     await this.initCoinCodexList();
 
@@ -92,7 +91,7 @@ export class AnalysisService {
 
     const MINIMUM_CONFIDENCE = 0.6;
 
-    let batchSize = 5;
+    let batchSize = 10;
     let batchCounter = 1;
 
     const BATCH_SUCCESS_THRESHOLD = 5;
@@ -102,7 +101,7 @@ export class AnalysisService {
     while (tokens.length) {
       const batch = tokens.splice(0, batchSize);
 
-      this.logger.log(
+      this.log(
         `Analyzing token batch ${batchCounter} (${tokens.length} tokens remaining)`,
       );
 
@@ -124,13 +123,13 @@ export class AnalysisService {
 
         if (newRate >= BATCH_SUCCESS_THRESHOLD) {
           batchSize++;
-          this.logger.log(`Increasing batch size to ${batchSize}`);
+          this.log(`Increasing batch size to ${batchSize}`);
           batchRates.set(batchSize, 1);
         } else {
           batchRates.set(batchSize, newRate);
         }
       } catch (error) {
-        this.logger.error(error);
+        this.log(error);
 
         if (!batchRates.has(batchSize)) {
           batchRates.set(batchSize, 0);
@@ -140,7 +139,7 @@ export class AnalysisService {
 
         if (newRate <= BATCH_FAIL_THRESHOLD) {
           batchSize--;
-          this.logger.log(`Decreasing batch size to ${batchSize}`);
+          this.log(`Decreasing batch size to ${batchSize}`);
           batchRates.set(batchSize, 0);
         } else {
           batchRates.set(batchSize, newRate);
@@ -255,7 +254,7 @@ export class AnalysisService {
         observation,
       };
     } catch (error) {
-      this.logger.error(error);
+      this.log(error);
       throw new Error('Analysis failed');
     }
   }
@@ -270,7 +269,7 @@ export class AnalysisService {
       });
 
       if (!metrics || metrics.length < MINIMUM_METRICS_DAYS) {
-        this.logger.error('Not enough metrics to train on.');
+        this.log('Not enough metrics to train on.');
         return;
       }
 
@@ -332,7 +331,7 @@ export class AnalysisService {
 
       await this.insertManyWeekObservations(weekObservations);
     } catch (error) {
-      this.logger.error('Error training analysis: ' + error);
+      this.log('Error training analysis: ' + error);
     }
   }
 
@@ -392,7 +391,7 @@ export class AnalysisService {
             'ohlcv',
           );
           break;
-        } catch (e) {}
+        } catch (error) {}
       }
 
       if (!dailyMetrics.length) {
@@ -557,7 +556,7 @@ export class AnalysisService {
 
   public async evaluatePastAnalysis(date?: Date) {
     try {
-      this.logger.log("Fetching yesterday's analysis..");
+      this.log("Fetching yesterday's analysis..");
 
       const yesterday = new Date();
       yesterday.setDate(yesterday.getDate() - 1);
@@ -571,7 +570,7 @@ export class AnalysisService {
 
       const analysis: WeekAnalysis = JSON.parse(formattedAnalysis.analysis);
 
-      this.logger.log('Fetching current prices..');
+      this.log('Fetching current prices..');
 
       const tokenIds = analysis.results
         .map((data) => data.token.token_id)
@@ -580,7 +579,7 @@ export class AnalysisService {
       const currentMarketData =
         await this.tokensService.getMultiTokenByMobulaIds(tokenIds);
 
-      this.logger.log('Computing performances..');
+      this.log('Computing performances..');
 
       const performances: TokenPerformance[] = [];
 
@@ -595,8 +594,8 @@ export class AnalysisService {
         const initialPrice = result.token.price;
         const currentPrice = current.price;
 
-        let priceChange = currentPrice - initialPrice;
-        let percentageChange = (priceChange / initialPrice) * 100;
+        const priceChange = currentPrice - initialPrice;
+        const percentageChange = (priceChange / initialPrice) * 100;
 
         performances.push({
           token: result.token.name,
@@ -609,7 +608,7 @@ export class AnalysisService {
 
       const stringifiedPerformance = JSON.stringify(performances);
 
-      this.logger.log('Saving performances..');
+      this.log('Saving performances..');
 
       this.supabaseService.updateSingle<DayAnalysisRecord>(
         Collection.WEEK_ANALYSIS_RESULTS,
@@ -619,8 +618,8 @@ export class AnalysisService {
         },
       );
     } catch (error) {
-      this.logger.error("Failed to evaluate yesterday's analysis");
-      this.logger.error(error);
+      this.log("Failed to evaluate yesterday's analysis");
+      this.log(error);
     }
   }
 
@@ -647,7 +646,7 @@ export class AnalysisService {
     const tokenTradeRatio: Map<number, { bought: number; sold: number }> =
       new Map();
 
-    this.logger.log(
+    this.log(
       `Starting trader analysis for ${tradersAddresses.length} traders...`,
     );
 
@@ -716,7 +715,7 @@ export class AnalysisService {
               tokenRatio.sold++;
             }
           } catch (error) {
-            this.logger.error('Error analyzing trades: ', error);
+            this.log(error);
           }
         }
       }),
@@ -735,7 +734,7 @@ export class AnalysisService {
   ): Promise<void> {
     if (!analysis?.length || !fearAndGreed) return;
 
-    this.logger.log('Buying tokens...');
+    this.log('Buying tokens...');
 
     const USDC_MOBULA_ID = 100012309;
 
@@ -743,7 +742,7 @@ export class AnalysisService {
     const balanceUsd = fakeWallet.tokens[USDC_MOBULA_ID];
 
     if (!balanceUsd || balanceUsd <= 0) {
-      this.logger.error('No USDC balance available');
+      this.log('No USDC balance available');
       return;
     }
 
@@ -811,7 +810,7 @@ export class AnalysisService {
       }),
     );
 
-    this.logger.log(`Opened ${tokensAllocations.length} new positions ! `);
+    this.log(`Opened ${tokensAllocations.length} new positions ! `);
   }
 
   public async test() {}
@@ -968,5 +967,10 @@ export class AnalysisService {
     snapshot: FakeWalletSnapshot,
   ): Promise<any> {
     return this.supabaseService.updateSingle(Collection.FAKE_WALLET, snapshot);
+  }
+
+  private log(message: string) {
+    this.logger.log(message);
+    this.logGateway.sendLog(message);
   }
 }

@@ -43,6 +43,7 @@ export type DayAnalysisRecord = {
   created_at: Date | string;
   performance?: string;
   fear_and_greed_index?: string;
+  test?: boolean;
 };
 
 export type TradersActivity = {

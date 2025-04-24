@@ -2,6 +2,7 @@ import {
   DayAnalysisRecord,
   TokenWeekAnalysisResult,
 } from 'src/modules/analysis/entities/analysis.type';
+import { Address, zeroAddress } from 'viem';
 
 export function findClosestInt(arr: number[], target: number): number {
   return arr.reduce((prev, curr) =>
@@ -43,4 +44,8 @@ export function formatDateToDDMMYYYY(date: Date): string {
   const year = date.getFullYear().toString();
 
   return `${day}${month}${year}`;
+}
+
+export function isValidAddress(address: Address | string | null): boolean {
+  return address && address !== zeroAddress;
 }
