@@ -888,6 +888,7 @@ export class AnalysisService {
         .select('*')
         .gte('created_at', startOfDate)
         .lte('created_at', endOfDate)
+        .or('test.is.null,test.eq.false')
         .limit(1)
         .single();
 
