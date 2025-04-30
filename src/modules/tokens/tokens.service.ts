@@ -1,8 +1,5 @@
 import { Injectable, Logger } from '@nestjs/common';
-import { TokenMetadataResponse } from 'alchemy-sdk';
-import { AlchemyService } from 'src/modules/alchemy/alchemy.service';
 import { Address, zeroAddress } from 'viem';
-import { WalletTokenBalance } from './entities/token.type';
 import { UniswapV3Service } from 'src/modules/uniswap-v3/uniswap-v3.service';
 import { MobulaService } from '../mobula/mobula.service';
 import {
@@ -14,60 +11,35 @@ import {
 } from '../mobula/entities/mobula.entities';
 import {
   USDC_ADDRESSES,
-  WETH_ADDRESSES,
+  WRAPPED_NATIVE_ADDRESSES,
 } from 'src/shared/utils/constants/chains';
 import { STABLECOINS_ID_SET } from '../mobula/entities/stablecoins';
-
-const WHITELISTED_CHAINS = [MobulaChain.BASE, MobulaChain.ETHEREUM];
+import { SupabaseError, SupabaseService } from '../supabase/supabase.service';
+import { Collection } from '../supabase/entities/collections.type';
+import { TokenMetadata } from './entities/metadata.type';
+import { isValidAddress } from 'src/shared/utils/helpers';
+import { SettingsService } from '../settings/settings.service';
+import { LogGateway } from 'src/shared/services/log-gateway';
 
 @Injectable()
 export class TokensService {
   private readonly logger = new Logger(TokensService.name);
+  private whitelistedChains: MobulaChain[] = [];
 
   constructor(
-    private readonly alchemyService: AlchemyService,
     private readonly uniswapV3Service: UniswapV3Service,
     private readonly mobulaService: MobulaService,
+    private readonly supabaseService: SupabaseService,
+    private readonly settingsService: SettingsService,
+    private readonly logGateway: LogGateway,
   ) {}
 
-  public async getWalletBalances(
-    wallet: Address,
-  ): Promise<WalletTokenBalance[]> {
-    const client = this.alchemyService.client;
-
-    try {
-      const balances = await client.core.getTokenBalances(wallet);
-
-      const nonZeroBalances = balances.tokenBalances.filter((token) => {
-        return token.tokenBalance !== '0';
-      });
-
-      const tokens: WalletTokenBalance[] = [];
-
-      for (let token of nonZeroBalances) {
-        const tokenAddress = token.contractAddress as Address;
-
-        const metadata = await this.getTokenMetadataByContract(tokenAddress);
-
-        tokens.push({
-          name: metadata.name,
-          symbol: metadata.symbol,
-          mainAddress: token.contractAddress,
-          balance: (
-            +token.tokenBalance / Math.pow(10, metadata.decimals)
-          ).toString(),
-        });
-      }
-
-      return tokens;
-    } catch (error) {
-      console.error(error);
-      return [];
-    }
-  }
-
   public async discoverTokens(limit = 500): Promise<MobulaExtendedToken[]> {
-    this.logger.log(`Initiating token discovery (max ${limit})`);
+    this.log(`Initiating token discovery (max ${limit})`);
+
+    this.whitelistedChains = await this.settingsService.getWhitelistedChains();
+
+    this.log(`Whitelisted chains: ${this.whitelistedChains.join(', ')}`);
 
     const tokenSocials: Map<number, MobulaTokenSocials> = new Map();
 
@@ -81,7 +53,7 @@ export class TokensService {
         'twitter',
       ]);
 
-      this.logger.log(`Fetched raw token list (${rawList.length} entries)`);
+      this.log(`Fetched raw token list (${rawList.length} entries)`);
 
       for (const token of rawList) {
         const { id, twitter, website } = token;
@@ -90,22 +62,18 @@ export class TokensService {
 
       const filteredList = this.filterDiscoveredTokens(rawList);
 
-      this.logger.log(
-        `Filtered raw token list to ${filteredList.length} entries`,
-      );
+      this.log(`Filtered raw token list to ${filteredList.length} entries`);
 
       const extendedTokens = await this.mobulaService.getTokenMultiData(
         filteredList.map((t) => t.id),
       );
 
-      this.logger.log(
-        `Extended tokens with more market data, calculating score..`,
-      );
+      this.log(`Extended tokens with more market data, calculating score..`);
 
       const scoredTokens: MobulaExtendedToken[] = extendedTokens
         .map((extendedToken) => {
           const filteredContracts = extendedToken.contracts.filter((contract) =>
-            WHITELISTED_CHAINS.includes(contract.blockchain),
+            this.whitelistedChains.includes(contract.blockchain),
           );
 
           const { id, ...token } = extendedToken;
@@ -123,13 +91,11 @@ export class TokensService {
         .slice(0, limit)
         .map(({ score, ...token }) => token);
 
-      this.logger.log(`Filtering tokens without known liquidity pools..`);
+      this.log(`Filtering tokens without known liquidity pools..`);
 
       const filteredTokens = await this.filterTokenWithPools(scoredTokens);
 
-      this.logger.log(
-        `Discovery completed with ${filteredTokens.length} tokens !`,
-      );
+      this.log(`Discovery completed with ${filteredTokens.length} tokens !`);
 
       return filteredTokens;
     } catch (error) {
@@ -158,7 +124,7 @@ export class TokensService {
       )
         return false;
 
-      if (!blockchains.some((chain) => WHITELISTED_CHAINS.includes(chain)))
+      if (!blockchains.some((chain) => this.whitelistedChains.includes(chain)))
         return false;
 
       return market_cap > MIN_MARKET_CAP && liquidity > MIN_LIQUIDITY;
@@ -211,13 +177,33 @@ export class TokensService {
   ): Promise<MobulaExtendedToken[]> {
     const tokenWithPools: MobulaExtendedToken[] = [];
 
-    for (let token of tokens) {
+    const tokenMetadatas = await this.getAllTokenMetadatas();
+
+    for (const token of tokens) {
       if (!token?.contracts?.length) continue;
 
-      const [contract] = token.contracts;
-      const wethAddress: Address = WETH_ADDRESSES[contract.blockchain];
+      const tokenMetadata = tokenMetadatas.find(
+        (metadata) => metadata.token_id === token.token_id,
+      );
 
-      const wethPoolAddress = await this.uniswapV3Service.getPoolAddress({
+      if (
+        tokenMetadata &&
+        (isValidAddress(tokenMetadata.weth_pool_address) ||
+          isValidAddress(tokenMetadata.usdc_pool_address))
+      ) {
+        tokenWithPools.push(token);
+        continue;
+      }
+
+      const [contract] = token.contracts;
+
+      const wethAddress: Address =
+        WRAPPED_NATIVE_ADDRESSES[contract.blockchain];
+
+      let wethPoolAddress: Address = zeroAddress;
+      let usdcPoolAddress: Address = zeroAddress;
+
+      wethPoolAddress = await this.uniswapV3Service.getPoolAddress({
         chain: contract.blockchain,
         tokenA: contract.address,
         tokenB: wethAddress,
@@ -226,7 +212,7 @@ export class TokensService {
       if (wethPoolAddress === zeroAddress) {
         const usdcAddress: Address = USDC_ADDRESSES[contract.blockchain];
 
-        const usdcPoolAddress = await this.uniswapV3Service.getPoolAddress({
+        usdcPoolAddress = await this.uniswapV3Service.getPoolAddress({
           chain: contract.blockchain,
           tokenA: contract.address,
           tokenB: usdcAddress,
@@ -235,25 +221,18 @@ export class TokensService {
         if (usdcPoolAddress === zeroAddress) continue;
       }
 
+      await this.saveTokenMetadata({
+        token_id: token.token_id,
+        name: token.name,
+        chain: contract.blockchain,
+        weth_pool_address: wethPoolAddress,
+        usdc_pool_address: usdcPoolAddress,
+      });
+
       tokenWithPools.push(token);
     }
 
     return tokenWithPools;
-  }
-
-  private async getTokenMetadataByContract(
-    tokenAddress: Address,
-  ): Promise<TokenMetadataResponse> {
-    const metadata =
-      await this.alchemyService.client.core.getTokenMetadata(tokenAddress);
-
-    return metadata;
-  }
-
-  public async getTokenByMobulaId(
-    token_id: number,
-  ): Promise<MobulaMultiDataToken> {
-    return await this.mobulaService.getTokenMarketDataById(token_id);
   }
 
   public async getMultiTokenByMobulaIds(
@@ -261,5 +240,34 @@ export class TokensService {
   ): Promise<MobulaMultiDataToken[]> {
     if (!tokenIds || !tokenIds.length) return [];
     return await this.mobulaService.getTokenMultiData(tokenIds);
+  }
+
+  public async getAllTokenMetadatas(): Promise<TokenMetadata[]> {
+    const { data, error } = await this.supabaseService.client
+      .from(Collection.TOKEN_METADATA)
+      .select('*');
+
+    if (error) {
+      throw new SupabaseError('Failed to fetch token metadata', error);
+    }
+
+    return data;
+  }
+
+  public async saveTokenMetadata(tokenMetadata: TokenMetadata): Promise<void> {
+    this.log(`Saving token metadata for token ${tokenMetadata.name}`);
+
+    const { error } = await this.supabaseService.client
+      .from(Collection.TOKEN_METADATA)
+      .insert(tokenMetadata);
+
+    if (error) {
+      throw new SupabaseError('Failed to save token metadata', error);
+    }
+  }
+
+  private log(message: string) {
+    this.logger.log(message);
+    this.logGateway.sendLog(message);
   }
 }

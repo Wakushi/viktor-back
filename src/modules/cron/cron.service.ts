@@ -9,6 +9,7 @@ import {
 import { PuppeteerService } from 'src/shared/services/puppeteer.service';
 import { formatWeekAnalysisResults } from 'src/shared/utils/helpers';
 import { Collection } from '../supabase/entities/collections.type';
+import { LogGateway } from 'src/shared/services/log-gateway';
 
 @Injectable()
 export class CronService {
@@ -18,63 +19,88 @@ export class CronService {
     private readonly supabaseService: SupabaseService,
     private readonly puppeteerService: PuppeteerService,
     private readonly analysisService: AnalysisService,
+    private readonly logGateway: LogGateway,
   ) {}
 
   @Cron(CronExpression.EVERY_DAY_AT_9AM)
-  async handleWeekBasedAnalysisJob() {
+  async handleWeekBasedAnalysisJob(mode: 'test' | 'live' = 'live') {
+    if (mode === 'test') {
+      this.log('Running complete analysis in test mode');
+    }
+
     try {
       const start = Date.now();
 
       const onAnalysisEnd = () => {
         const duration = Date.now() - start;
-        this.logger.log(`Analysis task completed in ${duration}ms`);
+        this.log(`Analysis task completed in ${duration}ms`);
       };
 
-      this.logger.log('Evaluating past week-based analysis...');
+      if (mode === 'live') {
+        this.log('Evaluating past week-based analysis...');
 
-      await this.analysisService.evaluatePastAnalysis();
+        await this.analysisService.evaluatePastAnalysis();
 
-      this.logger.log(
-        'Evaluated past analysis performances. Starting week-based analysis task...',
-      );
+        this.log(
+          'Evaluated past analysis performances. Starting week-based analysis task...',
+        );
+      }
 
       const analysisResults: TokenWeekAnalysisResult[] =
         await this.analysisService.seekMarketBuyingTargets();
 
       if (!analysisResults.length) {
-        this.logger.log('Analysis produced no results !');
+        this.log('Analysis produced no results !');
         onAnalysisEnd();
         return;
       }
 
-      this.logger.log('Fetching fear and greed index..');
+      this.log('Fetching fear and greed index..');
 
       const fearAndGreedIndex = await this.puppeteerService.getFearAndGreed();
 
-      this.logger.log('Saving results..');
+      this.log('Saving results..');
 
-      this.saveWeekAnalysisRecords(analysisResults, fearAndGreedIndex);
+      this.saveWeekAnalysisRecords({
+        analysisResults,
+        fearAndGreedIndex,
+        test: mode === 'test',
+      });
 
       onAnalysisEnd();
     } catch (error) {
-      this.logger.error(`Error during week analysis CRON Job: `, error);
+      this.log(`Error during week analysis CRON Job: ` + JSON.stringify(error));
     }
   }
 
-  private async saveWeekAnalysisRecords(
-    results: TokenWeekAnalysisResult[],
-    fearAndGreedIndex: string,
-  ): Promise<void> {
-    if (!results.length) return;
+  private async saveWeekAnalysisRecords({
+    analysisResults,
+    fearAndGreedIndex,
+    test,
+  }: {
+    analysisResults: TokenWeekAnalysisResult[];
+    fearAndGreedIndex: string;
+    test: boolean;
+  }): Promise<void> {
+    if (!analysisResults.length) return;
 
     const formattedResults = formatWeekAnalysisResults(
-      results,
+      analysisResults,
       fearAndGreedIndex,
     );
+
+    if (test) {
+      formattedResults.test = true;
+    }
 
     await this.supabaseService.insertSingle<DayAnalysisRecord>(
       Collection.WEEK_ANALYSIS_RESULTS,
       formattedResults,
     );
+  }
+
+  private log(message: string) {
+    this.logger.log(message);
+    this.logGateway.sendLog(message);
   }
 }

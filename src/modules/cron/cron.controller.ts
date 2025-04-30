@@ -1,4 +1,4 @@
-import { Controller, HttpCode, Post } from '@nestjs/common';
+import { Controller, HttpCode, Post, Body } from '@nestjs/common';
 import { CronService } from './cron.service';
 
 @Controller('cron')
@@ -7,7 +7,7 @@ export class CronController {
 
   @Post()
   @HttpCode(200)
-  async runWeekAnalysisCron() {
-    await this.cronService.handleWeekBasedAnalysisJob();
+  async runWeekAnalysisCron(@Body() body: { mode: 'test' | 'live' }) {
+    await this.cronService.handleWeekBasedAnalysisJob(body.mode);
   }
 }

@@ -17,8 +17,8 @@ export class UniswapV3Service {
   ) {
     const { rpcUrls } = config;
 
-    if (!rpcUrls.mainnet || !rpcUrls.testnet) {
-      throw new Error('Expected RPC URLs for both mainnet and testnet');
+    if (!rpcUrls) {
+      throw new Error('Expected RPC URLs');
     }
   }
 
@@ -27,13 +27,11 @@ export class UniswapV3Service {
     tokenA,
     tokenB,
     poolFee = FeeAmount.MEDIUM,
-    network = 'mainnet',
   }: {
     chain: MobulaChain;
     tokenA: Address | string;
     tokenB: Address | string;
     poolFee?: FeeAmount;
-    network?: 'mainnet' | 'testnet';
   }): Promise<Address> {
     try {
       const factoryAddress = UNISWAP_V3_FACTORY[chain];
@@ -42,7 +40,7 @@ export class UniswapV3Service {
         return ethers.ZeroAddress as Address;
       }
 
-      const rpcUrl = this.getRpcUrl(chain, network);
+      const rpcUrl = this.getRpcUrl(chain);
       const provider = new ethers.JsonRpcProvider(rpcUrl);
 
       const factory = new ethers.Contract(
@@ -60,14 +58,11 @@ export class UniswapV3Service {
     }
   }
 
-  private getRpcUrl(
-    chainName: MobulaChain,
-    network: 'mainnet' | 'testnet' = 'mainnet',
-  ): string {
-    const rpcUrl = this.config.rpcUrls[network][chainName];
+  private getRpcUrl(chainName: MobulaChain): string {
+    const rpcUrl = this.config.rpcUrls[chainName];
 
     if (!rpcUrl) {
-      throw new Error(`No RPC URL found for ${chainName} on ${network}`);
+      throw new Error(`No RPC URL found for ${chainName}`);
     }
 
     return rpcUrl;

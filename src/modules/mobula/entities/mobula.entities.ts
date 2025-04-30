@@ -4,6 +4,8 @@ export enum MobulaChain {
   ETHEREUM = 'Ethereum',
   BASE = 'Base',
   SOLANA = 'Solana',
+  ARBITRUM = 'Arbitrum',
+  BNB = 'BNB Smart Chain (BEP20)',
 }
 
 export type MobulaTokenPriceHistory = {

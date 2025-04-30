@@ -12,6 +12,7 @@ import {
   WalletStats,
 } from './entities/mobula.entities';
 import { Address } from 'viem';
+import { LogGateway } from 'src/shared/services/log-gateway';
 
 // Chains
 // https://docs.mobula.io/blockchains/intro-blockchains
@@ -25,6 +26,7 @@ export class MobulaService {
     private readonly config: {
       apiKey: string;
     },
+    private readonly logGateway: LogGateway,
   ) {}
 
   public async getAllTokens(
@@ -54,7 +56,7 @@ export class MobulaService {
     );
 
     if (error) {
-      this.logger.error(`Error fetching token by id ${token_id}: ` + error);
+      this.log(`Error fetching token by id ${token_id}: ` + error);
       return null;
     }
 
@@ -68,22 +70,14 @@ export class MobulaService {
     const results: MobulaMultiDataToken[] = [];
     let batchCounter = 1;
 
-    this.logger.log(
-      `[getTokenMultiData] Fetching token multi-data (${Math.floor(tokenIds.length / BATCH_SIZE)} batches)`,
-    );
-
     while (tokenIds.length) {
       const batch = tokenIds.splice(0, BATCH_SIZE);
       const endpoint = `/market/multi-data?ids=${batch.join(',')}`;
 
-      this.logger.log(
-        `[getTokenMultiData] Processing batch ${batchCounter} (${tokenIds.length} entries left)`,
-      );
-
       const { data, error } = await this.makeRequest(endpoint);
 
       if (error) {
-        this.logger.error('Error fetching token multi-data :', error);
+        this.log('Error fetching token multi-data : ' + error);
         tokenIds.push(...batch);
       } else {
         results.push(
@@ -107,10 +101,7 @@ export class MobulaService {
     );
 
     if (error) {
-      this.logger.error(
-        `Error fetching price history for asset ${asset}: `,
-        error,
-      );
+      this.log(`Error fetching price history for asset ${asset}: ` + error);
       return null;
     }
 
@@ -143,7 +134,7 @@ export class MobulaService {
     const { data, error } = await this.makeRequest(`/search?input=${token}`);
 
     if (error) {
-      this.logger.error(`Error fetching token by name ${token}: `, error);
+      this.log(`Error fetching token by name ${token}: ` + error);
       return null;
     }
 
@@ -154,7 +145,7 @@ export class MobulaService {
     const { data, error } = await this.makeRequest('/wallet/smart-money');
 
     if (error) {
-      this.logger.error('Error fetching smart money', error);
+      this.log('Error fetching smart money' + error);
       return null;
     }
 
@@ -190,7 +181,7 @@ export class MobulaService {
     );
 
     if (error) {
-      this.logger.error(`Error fetching ${wallet} trades: ` + error);
+      this.log(`Error fetching ${wallet} trades: ` + error);
       return null;
     }
 
@@ -212,7 +203,7 @@ export class MobulaService {
     const { data, error } = await this.makeRequest(endpoint);
 
     if (error) {
-      this.logger.error(`Error fetching ${token.name} OHLCV: ` + error);
+      this.log(`Error fetching ${token.name} OHLCV: ` + error);
       return null;
     }
 
@@ -229,5 +220,10 @@ export class MobulaService {
     const { data, message } = await response.json();
 
     return { data, error: message };
+  }
+
+  private log(message: string) {
+    this.logger.log(message);
+    this.logGateway.sendLog(message);
   }
 }
