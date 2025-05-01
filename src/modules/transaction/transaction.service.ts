@@ -63,6 +63,18 @@ export class TransactionService {
     }
   }
 
+  public async getSwaps(): Promise<Swap[]> {
+    const { data, error } = await this.supabaseService.client
+      .from(Collection.SWAPS)
+      .select('*');
+
+    if (error) {
+      throw new Error(error.message);
+    }
+
+    return data;
+  }
+
   public async buyTokens(
     results: TokenWeekAnalysisResult[],
     fearAndGreed: number,

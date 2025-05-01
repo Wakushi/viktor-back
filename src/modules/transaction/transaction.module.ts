@@ -3,6 +3,7 @@ import { SharedModule } from 'src/shared/shared.module';
 import { DynamicModule, Module } from '@nestjs/common';
 import { TransactionService } from './transaction.service';
 import { RpcUrlConfig } from '../uniswap-v3/entities/rpc-url-config.type';
+import { TransactionController } from './transaction.controller';
 
 @Module({})
 export class TransactionModule {
@@ -13,6 +14,7 @@ export class TransactionModule {
     return {
       module: TransactionModule,
       imports: [SharedModule],
+      controllers: [TransactionController],
       providers: [
         {
           provide: 'TRANSACTION_CONFIG',

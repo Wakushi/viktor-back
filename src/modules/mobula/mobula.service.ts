@@ -9,6 +9,7 @@ import {
   MobulaTokenPriceHistory,
   MobulaTokenQueryParams,
   SwapTransaction,
+  WalletHistory,
   WalletStats,
 } from './entities/mobula.entities';
 import { Address } from 'viem';
@@ -64,7 +65,7 @@ export class MobulaService {
   }
 
   public async getTokenMultiData(
-    tokenIds: number[],
+    tokenIds: any[],
   ): Promise<MobulaMultiDataToken[]> {
     const BATCH_SIZE = 300;
     const results: MobulaMultiDataToken[] = [];
@@ -208,6 +209,21 @@ export class MobulaService {
     }
 
     return data as MobulaOHLCV[];
+  }
+
+  public async getWalletHistory(wallet: Address): Promise<WalletHistory> {
+    const { data, error } = await this.makeRequest(
+      `/wallet/history?wallet=${wallet}`,
+    );
+
+    if (error) {
+      this.log(`Error fetching ${wallet} history: ` + error);
+      return null;
+    }
+
+    const { balance_usd, balance_history } = data;
+
+    return { balance_usd, balance_history };
   }
 
   private async makeRequest(
