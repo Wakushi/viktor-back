@@ -87,7 +87,7 @@ export class AnalysisService {
 
     const analysisResults: TokenWeekAnalysisResult[] = [];
 
-    const MINIMUM_CONFIDENCE = 0.6;
+    const MINIMUM_CONFIDENCE = 0.7;
 
     let batchSize = 10;
     let batchCounter = 1;
