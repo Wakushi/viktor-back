@@ -16,7 +16,10 @@ import {
 import { privateKeyToAccount } from 'viem/accounts';
 import { base, arbitrum, mainnet } from 'viem/chains';
 import { RpcUrlConfig } from '../uniswap-v3/entities/rpc-url-config.type';
-import { MobulaChain } from '../mobula/entities/mobula.entities';
+import {
+  MobulaChain,
+  MobulaMultiDataToken,
+} from '../mobula/entities/mobula.entities';
 import {
   ERC20_SIMPLE_ABI,
   VIKTOR_ASW_ABI,
@@ -27,12 +30,14 @@ import {
   USDC_DECIMALS,
 } from 'src/shared/utils/constants';
 import { USDC_ADDRESSES } from 'src/shared/utils/constants';
-import { Swap } from './entities/swap.type';
+import { QuotedToken, Swap } from './entities/swap.type';
 import { LogGateway } from 'src/shared/services/log-gateway';
 import { Collection } from '../supabase/entities/collections.type';
 import { MobulaService } from '../mobula/mobula.service';
 import { UniswapV3Service } from '../uniswap-v3/uniswap-v3.service';
 import { applySlippage } from 'src/shared/utils/helpers';
+import { ANALYSIS_MOCK_LARGE } from 'history/analysis-mock';
+import { MIN_USD_AMOUNT_TO_ALLOCATE } from './constants';
 
 @Injectable()
 export class TransactionService {
@@ -66,7 +71,7 @@ export class TransactionService {
 
     const tokenByChain: Map<MobulaChain, TokenWeekAnalysisResult[]> = new Map();
 
-    const latestData = await this.mobulaService.getTokenMultiData(
+    const latestTokenMetrics = await this.mobulaService.getTokenMultiData(
       results.map((result) => result.token.token_id),
     );
 
@@ -81,85 +86,48 @@ export class TransactionService {
     }
 
     for (const [chain] of tokenByChain.entries()) {
-      const usdcBalance = await this.getERC20Balance(
+      const tokenResults = tokenByChain.get(chain);
+
+      const totalUsdToAllocate = await this.getTotalUsdToAllocate(
         chain,
-        USDC_ADDRESSES[chain],
+        tokenResults,
+        fearAndGreed,
       );
-
-      if (!usdcBalance || usdcBalance === BigInt(0)) continue;
-
-      const tokens = tokenByChain.get(chain);
-
-      const totalConfidence = tokens.reduce(
-        (sum, curr) => sum + curr.confidence,
-        0,
-      );
-
-      const avgConfidence = totalConfidence / tokens.length;
-      const ratio = getAllocationRatio(avgConfidence, fearAndGreed);
-
-      const totalUsdToAllocate =
-        Number(formatUnits(usdcBalance, USDC_DECIMALS)) * ratio;
 
       this.log(`Allocating ${totalUsdToAllocate} USDC on ${chain}`);
 
-      const tokensAllocations = tokens.map((result) => {
-        const pct = result.confidence / totalConfidence;
-
-        const usdAmount = pct * totalUsdToAllocate;
-
-        const tokenPriceUsd =
-          latestData.find((data) => data.id === result.token.token_id)?.price ??
-          0;
-
-        const tokenAmountToBuy =
-          tokenPriceUsd > 0 ? usdAmount / tokenPriceUsd : 0;
-
-        return {
-          token: result.token,
-          usdAmount,
-          tokenAmountToBuy,
-        };
+      const quotedTokens = await this.getQuotedTokens({
+        results: tokenResults,
+        totalUsdToAllocate,
+        chain,
+        latestTokenMetrics,
       });
 
-      for (const tokenAllocation of tokensAllocations) {
+      for (const quotedToken of quotedTokens) {
         try {
-          const { blockchain, address: tokenAddress } =
-            tokenAllocation.token.contracts[0];
-
-          if (!blockchain || !tokenAddress) continue;
-
-          const usdcAddress: Address = getAddress(USDC_ADDRESSES[blockchain]);
-
-          const amountIn = parseUnits(
-            tokenAllocation.usdAmount.toString(),
-            USDC_DECIMALS,
+          console.log(
+            `Swapping ${quotedToken.tokenAmountToBuy} ${quotedToken.token.name} (${quotedToken.token.symbol}) on ${chain} for ${quotedToken.usdAmount} USDC`,
           );
 
-          const minAmountOut = await this.uniswapV3Service.getUniswapQuote({
-            chain: blockchain,
-            tokenIn: usdcAddress,
-            tokenOut: getAddress(tokenAddress),
-            amountIn,
-          });
-
           const minAmountOutWithSlippage = applySlippage(
-            minAmountOut,
+            quotedToken.minAmountOut,
             this.SLIPPAGE_PERCENT,
           );
 
+          const { token, usdAmount } = quotedToken;
+
           const swap = await this.executeSwap({
-            chainName: blockchain,
-            tokenIn: usdcAddress,
-            tokenOut: getAddress(tokenAddress),
-            amountIn,
+            chainName: chain,
+            tokenIn: getAddress(USDC_ADDRESSES[chain]),
+            tokenOut: getAddress(token.contracts[0].address),
+            amountIn: parseUnits(usdAmount.toString(), USDC_DECIMALS),
             minAmountOut: minAmountOutWithSlippage,
           });
 
           await this.supabaseService.insertSingle<Swap>(Collection.SWAPS, swap);
 
           this.log(
-            `Swap executed: ${BLOCK_EXPLORER_TX_URL[blockchain]}/${swap.transaction_hash}`,
+            `Swap executed: ${BLOCK_EXPLORER_TX_URL[chain]}/${swap.transaction_hash}`,
           );
         } catch (error) {
           this.logger.error(error);
@@ -292,6 +260,78 @@ export class TransactionService {
     }
   }
 
+  private async getQuotedTokens({
+    results,
+    totalUsdToAllocate,
+    chain,
+    latestTokenMetrics,
+  }: {
+    results: TokenWeekAnalysisResult[];
+    totalUsdToAllocate: number;
+    chain: MobulaChain;
+    latestTokenMetrics: MobulaMultiDataToken[];
+  }): Promise<QuotedToken[]> {
+    if (!results?.length) return [];
+
+    const totalConfidence = results.reduce(
+      (sum, curr) => sum + curr.confidence,
+      0,
+    );
+
+    const quotedTokens: QuotedToken[] = [];
+
+    for (const result of results) {
+      const resultConfidencePct = result.confidence / totalConfidence;
+
+      const usdAmount = resultConfidencePct * totalUsdToAllocate;
+
+      if (usdAmount < MIN_USD_AMOUNT_TO_ALLOCATE) {
+        return await this.getQuotedTokens({
+          results: results.slice(0, results.length - 1),
+          totalUsdToAllocate,
+          chain,
+          latestTokenMetrics,
+        });
+      }
+
+      const tokenPriceUsd =
+        latestTokenMetrics.find((token) => token.id === result.token.token_id)
+          ?.price ?? 0;
+
+      const tokenAmountToBuy =
+        tokenPriceUsd > 0 ? usdAmount / tokenPriceUsd : 0;
+
+      try {
+        const tokenAddress = getAddress(result.token.contracts[0].address);
+
+        const quote = await this.uniswapV3Service.getUniswapQuote({
+          chain,
+          tokenIn: USDC_ADDRESSES[chain],
+          tokenOut: tokenAddress,
+          amountIn: parseUnits(usdAmount.toString(), USDC_DECIMALS),
+        });
+
+        quotedTokens.push({
+          token: result.token,
+          usdAmount,
+          tokenAmountToBuy,
+          minAmountOut: quote,
+        });
+      } catch (error) {
+        return await this.getQuotedTokens({
+          results: results.filter(
+            ({ token }) => token.token_id !== result.token.token_id,
+          ),
+          totalUsdToAllocate,
+          chain,
+          latestTokenMetrics,
+        });
+      }
+    }
+
+    return quotedTokens;
+  }
+
   private async getERC20Balance(
     chainName: MobulaChain,
     address: Address,
@@ -320,6 +360,32 @@ export class TransactionService {
     }
   }
 
+  private async getTotalUsdToAllocate(
+    chain: MobulaChain,
+    tokenResults: TokenWeekAnalysisResult[],
+    fearAndGreed: number,
+  ): Promise<number> {
+    const usdcBalance = await this.getERC20Balance(
+      chain,
+      USDC_ADDRESSES[chain],
+    );
+
+    if (!usdcBalance || usdcBalance === BigInt(0)) {
+      this.log(`No USDC balance on ${chain}`);
+      return 0;
+    }
+
+    const totalConfidence = tokenResults.reduce(
+      (sum, curr) => sum + curr.confidence,
+      0,
+    );
+
+    const avgConfidence = totalConfidence / tokenResults.length;
+    const ratio = getAllocationRatio(avgConfidence, fearAndGreed);
+
+    return Number(formatUnits(usdcBalance, USDC_DECIMALS)) * ratio;
+  }
+
   private getRpcUrl(chainName: MobulaChain): string {
     const rpcUrl = this.config.rpcUrls[chainName];
 
@@ -346,5 +412,9 @@ export class TransactionService {
   private log(message: string) {
     this.logger.log(message);
     this.logGateway.sendLog(message);
+  }
+
+  public async test() {
+    await this.buyTokens(ANALYSIS_MOCK_LARGE, 50);
   }
 }

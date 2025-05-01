@@ -1,5 +1,7 @@
 import { MobulaChain } from 'src/modules/mobula/entities/mobula.entities';
 
+export const UNISWAP_COMMON_FEES = [3000, 10000, 500];
+
 export const UNISWAP_V3_FACTORY = {
   [MobulaChain.ETHEREUM]: '0x1F98431c8aD98523631AE4a59f267346ea31F984',
   [MobulaChain.BASE]: '0x33128a8fC17869897dcE68Ed026d694621f6FDfD',
@@ -72,5 +74,31 @@ export const UNISWAP_QUOTER_V2_ABI = [
     ],
     stateMutability: 'view',
     type: 'function',
+  },
+];
+
+export const UNISWAP_POOL_SLOT_0_ABI = [
+  {
+    name: 'slot0',
+    type: 'function',
+    stateMutability: 'view',
+    inputs: [],
+    outputs: [
+      { internalType: 'uint160', name: 'sqrtPriceX96', type: 'uint160' },
+      { internalType: 'int24', name: 'tick', type: 'int24' },
+      { internalType: 'uint16', name: 'observationIndex', type: 'uint16' },
+      {
+        internalType: 'uint16',
+        name: 'observationCardinality',
+        type: 'uint16',
+      },
+      {
+        internalType: 'uint16',
+        name: 'observationCardinalityNext',
+        type: 'uint16',
+      },
+      { internalType: 'uint8', name: 'feeProtocol', type: 'uint8' },
+      { internalType: 'bool', name: 'unlocked', type: 'bool' },
+    ],
   },
 ];

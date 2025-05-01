@@ -1,6 +1,6 @@
 import { Hash } from 'viem';
 
-import { MobulaChain } from 'src/modules/mobula/entities/mobula.entities';
+import { MobulaChain, MobulaExtendedToken } from 'src/modules/mobula/entities/mobula.entities';
 import { Address } from 'viem/accounts';
 
 export type Swap = {
@@ -11,4 +11,12 @@ export type Swap = {
   amount_out: string;
   transaction_hash: Hash;
   created_at?: Date | string;
+};
+
+export type QuotedToken = {
+  token: MobulaExtendedToken;
+  usdAmount: number;
+  tokenAmountToBuy: number;
+  minAmountOut?: bigint;
+  error?: string;
 };

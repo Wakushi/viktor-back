@@ -5,9 +5,11 @@ import {
   UNISWAP_V3_FACTORY,
   UNISWAP_V3_FACTORY_ABI,
   UNISWAP_QUOTER_V2_ABI,
+  UNISWAP_COMMON_FEES,
+  UNISWAP_POOL_SLOT_0_ABI,
 } from './entities/constants';
 import { RpcUrlConfig } from './entities/rpc-url-config.type';
-import { Address, Chain, createPublicClient, http } from 'viem';
+import { Address, Chain, createPublicClient, http, zeroAddress } from 'viem';
 import { MobulaChain } from '../mobula/entities/mobula.entities';
 import { base } from 'viem/chains';
 import { mainnet } from 'viem/chains';
@@ -68,13 +70,11 @@ export class UniswapV3Service {
     tokenIn,
     tokenOut,
     amountIn,
-    fee = 3000,
   }: {
     chain: MobulaChain;
     tokenIn: Address;
     tokenOut: Address;
     amountIn: bigint;
-    fee?: number;
   }): Promise<bigint> {
     const publicClient = createPublicClient({
       chain: this.getChain(chain),
@@ -82,45 +82,52 @@ export class UniswapV3Service {
     });
 
     const quoterAddress = QUOTER_CONTRACT_ADDRESSES[chain];
-
     if (!quoterAddress) {
-      throw new Error(`No Quoter contract address defined for chain ${chain}`);
+      throw new Error(`No Quoter contract address for ${chain}`);
     }
 
-    try {
-      const poolAddress = await this.getPoolAddress({
-        chain,
-        tokenA: tokenIn,
-        tokenB: tokenOut,
-        poolFee: fee,
-      });
+    for (const fee of UNISWAP_COMMON_FEES) {
+      try {
+        const poolAddress = await this.getPoolAddress({
+          chain,
+          tokenA: tokenIn,
+          tokenB: tokenOut,
+          poolFee: fee,
+        });
 
-      if (!poolAddress) {
-        throw new Error(`No pool address found for ${tokenIn} and ${tokenOut}`);
-      }
+        if (!poolAddress || poolAddress === zeroAddress) {
+          continue;
+        }
 
-      const { result } = await publicClient.simulateContract({
-        address: quoterAddress,
-        abi: UNISWAP_QUOTER_V2_ABI,
-        functionName: 'quoteExactInputSingle',
-        args: [
-          {
-            tokenIn,
-            tokenOut,
-            amountIn,
-            fee,
-            sqrtPriceLimitX96: 0n,
-          },
-        ],
-      });
+        await publicClient.readContract({
+          address: poolAddress,
+          abi: UNISWAP_POOL_SLOT_0_ABI,
+          functionName: 'slot0',
+        });
 
-      const [amountOut] = result as [bigint];
+        const { result } = await publicClient.simulateContract({
+          address: quoterAddress,
+          abi: UNISWAP_QUOTER_V2_ABI,
+          functionName: 'quoteExactInputSingle',
+          args: [
+            {
+              tokenIn,
+              tokenOut,
+              amountIn,
+              fee,
+              sqrtPriceLimitX96: 0n,
+            },
+          ],
+        });
 
-      return amountOut as bigint;
-    } catch (error) {
-      console.error(`Failed to get quote:`, error);
-      throw error;
+        const [amountOut] = result as [bigint];
+        return amountOut;
+      } catch (err: any) {}
     }
+
+    throw new Error(
+      `❌ Could not get quote for ${tokenIn} → ${tokenOut} on ${chain} at any fee tier`,
+    );
   }
 
   private getRpcUrl(chainName: MobulaChain): string {

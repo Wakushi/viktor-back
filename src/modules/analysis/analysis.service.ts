@@ -56,7 +56,7 @@ export class AnalysisService {
     private readonly logGateway: LogGateway,
   ) {}
 
-  public async seekMarketBuyingTargets(): Promise<any> {
+  public async seekMarketBuyingTargets(limit: number = 5): Promise<any> {
     try {
       this.log('Started token search...');
 
@@ -68,9 +68,13 @@ export class AnalysisService {
       const analysis: TokenWeekAnalysisResult[] =
         await this.analyzeTokens(tokens);
 
-      this.log(`Analysis completed ! ${analysis.length} results available.`);
+      const buyingTargets = analysis.slice(0, limit);
 
-      return analysis;
+      this.log(
+        `Analysis completed ! ${buyingTargets.length} results available.`,
+      );
+
+      return buyingTargets;
     } catch (error) {
       console.error('Error while seeking market buying targets :', error);
       await this.deleteOHLCVDirectory();

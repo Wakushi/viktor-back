@@ -10,4 +10,10 @@ export class CronController {
   async runWeekAnalysisCron(@Body() body: { mode: 'test' | 'live' }) {
     await this.cronService.handleWeekBasedAnalysisJob(body.mode);
   }
+
+  @Post('test')
+  @HttpCode(200)
+  async test() {
+    await this.cronService.test();
+  }
 }

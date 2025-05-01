@@ -117,4 +117,8 @@ export class CronService {
     this.logger.log(message);
     this.logGateway.sendLog(message);
   }
+
+  public async test() {
+    await this.transactionService.test();
+  }
 }
