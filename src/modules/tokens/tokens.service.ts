@@ -9,10 +9,6 @@ import {
   MobulaMultipleTokens,
   MobulaTokenSocials,
 } from '../mobula/entities/mobula.entities';
-import {
-  USDC_ADDRESSES,
-  WRAPPED_NATIVE_ADDRESSES,
-} from 'src/shared/utils/constants/chains';
 import { STABLECOINS_ID_SET } from '../mobula/entities/stablecoins';
 import { SupabaseError, SupabaseService } from '../supabase/supabase.service';
 import { Collection } from '../supabase/entities/collections.type';
@@ -20,6 +16,8 @@ import { TokenMetadata } from './entities/metadata.type';
 import { isValidAddress } from 'src/shared/utils/helpers';
 import { SettingsService } from '../settings/settings.service';
 import { LogGateway } from 'src/shared/services/log-gateway';
+import { USDT_ADDRESSES, WRAPPED_NATIVE_ADDRESSES } from 'src/shared/utils/constants'
+import { USDC_ADDRESSES } from 'src/shared/utils/constants'
 
 @Injectable()
 export class TokensService {
@@ -189,7 +187,8 @@ export class TokensService {
       if (
         tokenMetadata &&
         (isValidAddress(tokenMetadata.weth_pool_address) ||
-          isValidAddress(tokenMetadata.usdc_pool_address))
+          isValidAddress(tokenMetadata.usdc_pool_address) ||
+          isValidAddress(tokenMetadata.usdt_pool_address))
       ) {
         tokenWithPools.push(token);
         continue;
@@ -199,37 +198,55 @@ export class TokensService {
 
       const wethAddress: Address =
         WRAPPED_NATIVE_ADDRESSES[contract.blockchain];
+      const usdcAddress: Address = USDC_ADDRESSES[contract.blockchain];
+      const usdtAddress: Address = USDT_ADDRESSES[contract.blockchain];
 
-      let wethPoolAddress: Address = zeroAddress;
-      let usdcPoolAddress: Address = zeroAddress;
+      const addresses = [
+        {
+          address: wethAddress,
+          name: 'WETH',
+        },
+        {
+          address: usdcAddress,
+          name: 'USDC',
+        },
+        {
+          address: usdtAddress,
+          name: 'USDT',
+        },
+      ];
 
-      wethPoolAddress = await this.uniswapV3Service.getPoolAddress({
-        chain: contract.blockchain,
-        tokenA: contract.address,
-        tokenB: wethAddress,
-      });
-
-      if (wethPoolAddress === zeroAddress) {
-        const usdcAddress: Address = USDC_ADDRESSES[contract.blockchain];
-
-        usdcPoolAddress = await this.uniswapV3Service.getPoolAddress({
+      for (const { address, name } of addresses) {
+        const poolAddress = await this.uniswapV3Service.getPoolAddress({
           chain: contract.blockchain,
           tokenA: contract.address,
-          tokenB: usdcAddress,
+          tokenB: address,
         });
 
-        if (usdcPoolAddress === zeroAddress) continue;
+        if (poolAddress !== zeroAddress) {
+          if (name === 'USDT') {
+            console.log(
+              `${token.name} has USDT pool ${poolAddress} on chain ${contract.blockchain}`,
+            );
+          }
+
+          try {
+            await this.saveTokenMetadata({
+              token_id: token.token_id,
+              name: token.name,
+              chain: contract.blockchain,
+              [name.toLowerCase() + '_pool_address']: poolAddress,
+            });
+          } catch (error) {
+            console.error(
+              `Error saving token metadata for ${token.name}:`,
+              error,
+            );
+          }
+
+          tokenWithPools.push(token);
+        }
       }
-
-      await this.saveTokenMetadata({
-        token_id: token.token_id,
-        name: token.name,
-        chain: contract.blockchain,
-        weth_pool_address: wethPoolAddress,
-        usdc_pool_address: usdcPoolAddress,
-      });
-
-      tokenWithPools.push(token);
     }
 
     return tokenWithPools;
@@ -264,6 +281,20 @@ export class TokensService {
     if (error) {
       throw new SupabaseError('Failed to save token metadata', error);
     }
+  }
+
+  public async getTokenMetadata(tokenId: number): Promise<TokenMetadata> {
+    const { data, error } = await this.supabaseService.client
+      .from(Collection.TOKEN_METADATA)
+      .select('*')
+      .eq('token_id', tokenId)
+      .single();
+
+    if (error) {
+      throw new SupabaseError('Failed to fetch token metadata', error);
+    }
+
+    return data;
   }
 
   private log(message: string) {

@@ -49,3 +49,8 @@ export function formatDateToDDMMYYYY(date: Date): string {
 export function isValidAddress(address: Address | string | null): boolean {
   return address && address !== zeroAddress;
 }
+
+export function applySlippage(value: bigint, slippagePercent: number): bigint {
+  const slippageBps = Math.floor(slippagePercent * 10_000);
+  return value - (value * BigInt(slippageBps)) / 10_000n;
+}
