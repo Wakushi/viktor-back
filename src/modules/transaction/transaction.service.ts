@@ -36,7 +36,7 @@ import { Collection } from '../supabase/entities/collections.type';
 import { MobulaService } from '../mobula/mobula.service';
 import { UniswapV3Service } from '../uniswap-v3/uniswap-v3.service';
 import { applySlippage } from 'src/shared/utils/helpers';
-import { ANALYSIS_MOCK_LARGE } from 'history/analysis-mock';
+// import { ANALYSIS_MOCK_LARGE } from 'history/analysis-mock';
 import { MIN_USD_AMOUNT_TO_ALLOCATE } from './constants';
 
 @Injectable()
@@ -427,6 +427,6 @@ export class TransactionService {
   }
 
   public async test() {
-    await this.buyTokens(ANALYSIS_MOCK_LARGE, 50);
+    // await this.buyTokens(ANALYSIS_MOCK_LARGE, 50);
   }
 }
