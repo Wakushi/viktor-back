@@ -40,7 +40,6 @@ import { MobulaService } from '../mobula/mobula.service';
 import { UniswapV3Service } from '../uniswap-v3/uniswap-v3.service';
 import { applySlippage } from 'src/shared/utils/helpers';
 import { MIN_USD_AMOUNT_TO_ALLOCATE } from './constants';
-import { ANALYSIS_MOCK } from 'history/analysis-mock';
 
 @Injectable()
 export class TransactionService {
