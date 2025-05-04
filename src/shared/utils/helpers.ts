@@ -2,7 +2,7 @@ import {
   DayAnalysisRecord,
   TokenWeekAnalysisResult,
 } from 'src/modules/analysis/entities/analysis.type';
-import { Address, zeroAddress } from 'viem';
+import { Address, zeroAddress, encodePacked } from 'viem';
 
 export function findClosestInt(arr: number[], target: number): number {
   return arr.reduce((prev, curr) =>
@@ -53,4 +53,17 @@ export function isValidAddress(address: Address | string | null): boolean {
 export function applySlippage(value: bigint, slippagePercent: number): bigint {
   const slippageBps = Math.floor(slippagePercent * 10_000);
   return value - (value * BigInt(slippageBps)) / 10_000n;
+}
+
+export function encodePath(tokens: Address[], fees: number[]): `0x${string}` {
+  const encodedParts: `0x${string}`[] = [];
+
+  for (let i = 0; i < fees.length; i++) {
+    const segment = encodePacked(['address', 'uint24'], [tokens[i], fees[i]]);
+    encodedParts.push(segment);
+  }
+
+  encodedParts.push(encodePacked(['address'], [tokens[tokens.length - 1]]));
+
+  return `0x${encodedParts.map((p) => p.slice(2)).join('')}` as `0x${string}`;
 }

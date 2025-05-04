@@ -218,3 +218,19 @@ export interface WalletHistory {
   balance_history: [number, number][];
 }
 
+export interface TokenBalance {
+  token_balance: number;
+  price: number;
+  allocation: number;
+  asset: TokenBalanceAsset;
+}
+
+export interface TokenBalanceAsset {
+  id: number;
+  name: string;
+  symbol: string;
+  logo: string;
+  decimals: string[];
+  contracts: string[];
+  blockchains: string[];
+}

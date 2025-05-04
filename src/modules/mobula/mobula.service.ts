@@ -9,6 +9,7 @@ import {
   MobulaTokenPriceHistory,
   MobulaTokenQueryParams,
   SwapTransaction,
+  TokenBalance,
   WalletHistory,
   WalletStats,
 } from './entities/mobula.entities';
@@ -224,6 +225,31 @@ export class MobulaService {
     const { balance_usd, balance_history } = data;
 
     return { balance_usd, balance_history };
+  }
+
+  public async getWalletPortfolio(
+    wallet: Address,
+    chain: MobulaChain,
+  ): Promise<TokenBalance[]> {
+    const { data, error } = await this.makeRequest(
+      `/wallet/portfolio?wallet=${wallet}&blockchains=${chain.toLowerCase()}`,
+    );
+
+    if (error) {
+      this.log(`Error fetching ${wallet} portfolio: ` + error);
+      return null;
+    }
+
+    const assets: TokenBalance[] = data.assets
+      .filter((asset) => asset.token_balance)
+      .map((asset) => ({
+        token_balance: asset.token_balance,
+        price: asset.price,
+        allocation: asset.allocation,
+        asset: asset.asset,
+      }));
+
+    return assets;
   }
 
   private async makeRequest(

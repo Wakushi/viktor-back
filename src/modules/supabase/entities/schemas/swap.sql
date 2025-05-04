@@ -6,5 +6,6 @@ create table swaps (
    amount_in TEXT not null,
    amount_out TEXT not null,
    transaction_hash TEXT not null,
+   path TEXT not null,
    created_at timestamptz not null default now()
 );

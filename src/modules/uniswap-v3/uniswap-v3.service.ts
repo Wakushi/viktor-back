@@ -6,21 +6,39 @@ import {
   UNISWAP_V3_FACTORY_ABI,
   UNISWAP_QUOTER_V2_ABI,
   UNISWAP_COMMON_FEES,
-  UNISWAP_POOL_SLOT_0_ABI,
 } from './entities/constants';
 import { RpcUrlConfig } from './entities/rpc-url-config.type';
-import { Address, Chain, createPublicClient, http, zeroAddress } from 'viem';
+import {
+  Address,
+  Chain,
+  createPublicClient,
+  formatUnits,
+  getAddress,
+  Hex,
+  http,
+  parseUnits,
+  zeroAddress,
+} from 'viem';
 import { MobulaChain } from '../mobula/entities/mobula.entities';
 import { base } from 'viem/chains';
 import { mainnet } from 'viem/chains';
 import { arbitrum } from 'viem/chains';
-import { QUOTER_CONTRACT_ADDRESSES } from 'src/shared/utils/constants';
+import {
+  QUOTER_CONTRACT_ADDRESSES,
+  USDC_ADDRESSES,
+  WETH_DECIMALS,
+  WRAPPED_NATIVE_ADDRESSES,
+} from 'src/shared/utils/constants';
+import { encodePath } from 'src/shared/utils/helpers';
+import { MobulaService } from '../mobula/mobula.service';
+import { MOBULA_ETHER_ID } from '../mobula/entities/constants';
 
 @Injectable()
 export class UniswapV3Service {
   constructor(
     @Inject('UNISWAP_V3_CONFIG')
     private readonly config: { rpcUrls: RpcUrlConfig },
+    private readonly mobulaService: MobulaService,
   ) {
     const { rpcUrls } = config;
 
@@ -65,69 +83,250 @@ export class UniswapV3Service {
     }
   }
 
-  public async getUniswapQuote({
+  public async findShortestViablePath({
     chain,
     tokenIn,
     tokenOut,
+    tokenOutDecimals,
+    tokenOutPrice,
     amountIn,
   }: {
     chain: MobulaChain;
     tokenIn: Address;
     tokenOut: Address;
+    tokenOutDecimals: number;
+    tokenOutPrice: number;
     amountIn: bigint;
-  }): Promise<bigint> {
+  }): Promise<{ path: Hex; minAmountOut: bigint }> {
+    try {
+      const { path, minAmountOut } = await this.findSingleHopPath({
+        chain,
+        tokenIn,
+        tokenOut,
+        tokenOutDecimals,
+        amountIn,
+      });
+
+      return { path, minAmountOut };
+    } catch {
+      const { path, minAmountOut } = await this.findMultiHopPath({
+        chain,
+        tokenIn,
+        tokenOut,
+        tokenOutDecimals,
+        amountIn,
+        tokenOutPrice,
+      });
+
+      return { path, minAmountOut };
+    }
+  }
+
+  private async findSingleHopPath({
+    chain,
+    tokenIn,
+    tokenOut,
+    tokenOutDecimals,
+    amountIn,
+  }: {
+    chain: MobulaChain;
+    tokenIn: Address;
+    tokenOut: Address;
+    tokenOutDecimals: number;
+    amountIn: bigint;
+  }): Promise<{ path: Hex; minAmountOut: bigint }> {
+    const quoterAddress = QUOTER_CONTRACT_ADDRESSES[chain];
+
+    if (!quoterAddress) throw new Error(`No Quoter contract for ${chain}`);
+
+    const minPoolLiquidity = parseUnits('100000', tokenOutDecimals);
+
+    const { pool, fee, liquidity } = await this.getBestPool({
+      chain,
+      tokenIn,
+      tokenOut,
+    });
+
+    if (!pool || pool === zeroAddress) {
+      throw new Error('No single-hop pools');
+    }
+
+    if (liquidity < minPoolLiquidity) {
+      throw new Error('Pools too shallow');
+    }
+
     const publicClient = createPublicClient({
       chain: this.getChain(chain),
       transport: http(this.getRpcUrl(chain)),
     });
 
-    const quoterAddress = QUOTER_CONTRACT_ADDRESSES[chain];
-    if (!quoterAddress) {
-      throw new Error(`No Quoter contract address for ${chain}`);
-    }
+    const { result: singleHopResult } = await publicClient.simulateContract({
+      address: quoterAddress,
+      abi: UNISWAP_QUOTER_V2_ABI,
+      functionName: 'quoteExactInputSingle',
+      args: [{ tokenIn, tokenOut, amountIn, fee, sqrtPriceLimitX96: 0n }],
+    });
 
-    for (const fee of UNISWAP_COMMON_FEES) {
-      try {
-        const poolAddress = await this.getPoolAddress({
-          chain,
-          tokenA: tokenIn,
-          tokenB: tokenOut,
-          poolFee: fee,
-        });
+    const [amountOutSingleHop] = singleHopResult as [bigint];
 
-        if (!poolAddress || poolAddress === zeroAddress) {
-          continue;
-        }
+    if (amountOutSingleHop > 0n) {
+      const path = encodePath([tokenIn, tokenOut], [fee]);
 
-        await publicClient.readContract({
-          address: poolAddress,
-          abi: UNISWAP_POOL_SLOT_0_ABI,
-          functionName: 'slot0',
-        });
-
-        const { result } = await publicClient.simulateContract({
-          address: quoterAddress,
-          abi: UNISWAP_QUOTER_V2_ABI,
-          functionName: 'quoteExactInputSingle',
-          args: [
-            {
-              tokenIn,
-              tokenOut,
-              amountIn,
-              fee,
-              sqrtPriceLimitX96: 0n,
-            },
-          ],
-        });
-
-        const [amountOut] = result as [bigint];
-        return amountOut;
-      } catch (err: any) {}
+      return { path, minAmountOut: amountOutSingleHop };
     }
 
     throw new Error(
-      `❌ Could not get quote for ${tokenIn} → ${tokenOut} on ${chain} at any fee tier`,
+      `❌ No viable single-hop path found for ${tokenIn} → ${tokenOut} on ${chain}`,
     );
+  }
+
+  private async findMultiHopPath({
+    chain,
+    tokenIn,
+    tokenOut,
+    tokenOutDecimals,
+    tokenOutPrice,
+    amountIn,
+  }: {
+    chain: MobulaChain;
+    tokenIn: Address;
+    tokenOut: Address;
+    tokenOutDecimals: number;
+    tokenOutPrice: number;
+    amountIn: bigint;
+  }): Promise<{ path: Hex; minAmountOut: bigint }> {
+    const WETH = WRAPPED_NATIVE_ADDRESSES[chain];
+    const USDC = USDC_ADDRESSES[chain];
+    const quoterAddress = QUOTER_CONTRACT_ADDRESSES[chain];
+
+    if (!quoterAddress) throw new Error(`No Quoter contract for ${chain}`);
+
+    const MIN_LIQUIDITY_USD = 5000;
+
+    const isSwapToUSDC = getAddress(tokenOut) === getAddress(USDC);
+    const middle = WETH;
+    const legA = isSwapToUSDC ? tokenIn : USDC;
+    const legB = isSwapToUSDC ? USDC : tokenOut;
+
+    const {
+      pool: poolA,
+      fee: feeA,
+      liquidity: liquidityA,
+    } = await this.getBestPool({
+      chain,
+      tokenIn: legA,
+      tokenOut: middle,
+    });
+
+    const {
+      pool: poolB,
+      fee: feeB,
+      liquidity: liquidityB,
+    } = await this.getBestPool({
+      chain,
+      tokenIn: middle,
+      tokenOut: legB,
+    });
+
+    if (!poolA || poolA === zeroAddress || !poolB || poolB === zeroAddress) {
+      throw new Error('No multi-hop pools');
+    }
+
+    const wethMarketData =
+      await this.mobulaService.getTokenMarketDataById(MOBULA_ETHER_ID);
+
+    if (!wethMarketData) {
+      throw new Error('WETH market data not found');
+    }
+
+    const wethPrice = wethMarketData.price;
+
+    const liquidityAprice =
+      Number(formatUnits(liquidityA, WETH_DECIMALS)) * wethPrice;
+
+    const liquidityBPrice =
+      Number(formatUnits(liquidityB, tokenOutDecimals)) * tokenOutPrice;
+
+    if (
+      liquidityAprice < MIN_LIQUIDITY_USD ||
+      liquidityBPrice < MIN_LIQUIDITY_USD
+    ) {
+      throw new Error('Pools too shallow');
+    }
+
+    const tokens = isSwapToUSDC
+      ? [tokenIn, middle, tokenOut]
+      : [USDC, middle, tokenOut];
+
+    const path = encodePath(tokens, [feeA, feeB]);
+
+    const publicClient = createPublicClient({
+      chain: this.getChain(chain),
+      transport: http(this.getRpcUrl(chain)),
+    });
+
+    const { result } = await publicClient.simulateContract({
+      address: quoterAddress,
+      abi: UNISWAP_QUOTER_V2_ABI,
+      functionName: 'quoteExactInput',
+      args: [path, amountIn],
+    });
+
+    const [amountOut] = result as [bigint];
+
+    if (amountOut > 0n) {
+      return { path, minAmountOut: amountOut };
+    }
+  }
+
+  private async getBestPool({
+    chain,
+    tokenIn,
+    tokenOut,
+  }: {
+    chain: MobulaChain;
+    tokenIn: Address;
+    tokenOut: Address;
+  }): Promise<{ pool: Address; fee: FeeAmount; liquidity: bigint }> {
+    const fees = [FeeAmount.LOW, FeeAmount.MEDIUM, FeeAmount.HIGH];
+
+    const publicClient = createPublicClient({
+      chain: this.getChain(chain),
+      transport: http(this.getRpcUrl(chain)),
+    });
+
+    let bestPool: { pool: Address; fee: FeeAmount; liquidity: bigint } | null =
+      null;
+
+    for (const fee of fees) {
+      const pool = await this.getPoolAddress({
+        chain,
+        tokenA: tokenIn,
+        tokenB: tokenOut,
+        poolFee: fee,
+      });
+
+      const tokenOutBalance = await publicClient.readContract({
+        address: tokenOut,
+        abi: [
+          {
+            name: 'balanceOf',
+            type: 'function',
+            stateMutability: 'view',
+            inputs: [{ name: 'account', type: 'address' }],
+            outputs: [{ type: 'uint256' }],
+          },
+        ],
+        functionName: 'balanceOf',
+        args: [pool],
+      });
+
+      if (!bestPool || tokenOutBalance > bestPool.liquidity) {
+        bestPool = { pool, fee, liquidity: tokenOutBalance };
+      }
+    }
+
+    return bestPool;
   }
 
   private getRpcUrl(chainName: MobulaChain): string {

@@ -1,27 +1,23 @@
 // SPDX-License-Identifier: MIT
-
 pragma solidity ^0.8.20;
 
-import { Ownable } from "@openzeppelin/contracts/access/Ownable.sol";
-import { IERC20 } from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
+import {Ownable} from "@openzeppelin/contracts/access/Ownable.sol";
+import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import { SafeERC20 } from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
-import { ISwapRouter } from "@uniswap/v3-periphery/contracts/interfaces/ISwapRouter.sol";
-import { IUniswapV3Factory } from "@uniswap/v3-core/contracts/interfaces/IUniswapV3Factory.sol";
-import { IUniswapV3Pool } from "@uniswap/v3-core/contracts/interfaces/IUniswapV3Pool.sol";
 
-/**
- * ==================== Contract Addresses ====================
- * 
- * Network          | Contract | Address
- * -----------------|----------|----------------------------------
- * Base Mainnet     | Factory  | 0x33128a8fC17869897dcE68Ed026d694621f6FDfD
- *                  | Router   | 0x2626664c2603336E57B271c5C0b26F421741e481
- *                  | USDC     | 0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913
- *                  | WETH     | 0x4200000000000000000000000000000000000006
- */
+
+interface IUniversalRouter {
+    function execute(
+        bytes calldata commands,
+        bytes[] calldata inputs,
+        uint256 deadline
+    ) external payable;
+}
 
 contract ViktorASW is Ownable {
     using SafeERC20 for IERC20;
+
+    address public constant UNIVERSAL_ROUTER = 0x6fF5693b99212Da76ad316178A184AB56D299b43;
 
     struct Swap {
         address tokenIn;
@@ -34,17 +30,11 @@ contract ViktorASW is Ownable {
     uint256 private swapCount;
     mapping(uint256 swapId => Swap) private s_swaps;
 
-    IUniswapV3Factory private constant i_uniswapFactory = IUniswapV3Factory(0x33128a8fC17869897dcE68Ed026d694621f6FDfD);
-    ISwapRouter02 private constant router = ISwapRouter02(0x2626664c2603336E57B271c5C0b26F421741e481);
-
     error ViktorASW__NotAgent();
     error ViktorASW__TransferFailed();
     error ViktorASW__ZeroAddress();
     error ViktorASW__ZeroAmount();
     error ViktorASW__InsufficientBalance();
-    error ViktorASW__SwapFailed();
-    error ViktorASW__ApprovalFailed();
-    error ViktorASW__PoolNotFound();
     
     event TokensWithdrawn(address indexed token, address indexed to, uint256 amount);
     event EthWithdrawn(address indexed to, uint256 amount);
@@ -55,51 +45,56 @@ contract ViktorASW is Ownable {
         uint256 indexed amountIn
     );
 
-    constructor(address _owner, address _agent) Ownable(_owner) {
+    constructor(address _agent) Ownable(msg.sender) {
         if(_agent == address(0)) revert ViktorASW__ZeroAddress();
 
         s_agent = _agent;
+    }
+
+    modifier onlyAgentOrOwner() {
+        _ensureOnlyAgentOrOwner();
+        _;
     }
 
     receive() external payable {}
 
     fallback() external payable {}
 
-    function mockSwap(address tokenIn, address tokenOut, uint256 amountIn, uint256 amountOutMin) external {
+    function swapTokens(bytes calldata _path, uint256 _amountIn, uint256 _minOut) external onlyOwner {
 
-        _ensureOnlyAgentOrOwner();
-        
-        s_swaps[swapCount] = Swap(tokenIn, tokenOut, amountIn, block.timestamp);
+        (address tokenIn, address tokenOut) = extractFirstAndLastTokenFromPath(_path);
+
+        IERC20(tokenIn).transfer(address(UNIVERSAL_ROUTER), _amountIn);
+
+        bytes memory commands = new bytes(1);
+        commands[0] = bytes1(uint8(0x00)); 
+
+        bytes[] memory inputs = new bytes[](1);
+        inputs[0] = abi.encode(
+            address(this), 
+            _amountIn, 
+            _minOut, 
+            _path,
+            false 
+        );
+
+        IUniversalRouter(UNIVERSAL_ROUTER).execute(commands, inputs, block.timestamp + 300);
+
+        s_swaps[swapCount] = Swap(tokenIn, tokenOut, _amountIn, block.timestamp);
         swapCount++;
 
-        emit SwapExecuted(tokenIn, tokenOut, amountIn);
-
+        emit SwapExecuted(tokenIn, tokenOut, _amountIn);
     }
 
-    function swapExactInputSingleHop(address tokenIn, address tokenOut, uint256 amountIn, uint256 amountOutMin)
-        external
-    {
-        _ensureOnlyAgentOrOwner();
+    function extractFirstAndLastTokenFromPath(bytes memory path) internal pure returns (address tokenIn, address tokenOut) {
+        require(path.length >= 20, "Path too short");
 
-        IERC20(tokenIn).approve(address(router), amountIn);
+        uint256 lastTokenOffset = path.length - 20;
 
-        ISwapRouter02.ExactInputSingleParams memory params = ISwapRouter02
-            .ExactInputSingleParams({
-            tokenIn: tokenIn,
-            tokenOut: tokenOut,
-            fee: 3000,
-            recipient: address(this),
-            amountIn: amountIn,
-            amountOutMinimum: amountOutMin,
-            sqrtPriceLimitX96: 0
-        });
-
-        router.exactInputSingle(params);
-
-        s_swaps[swapCount] = Swap(tokenIn, tokenOut, amountIn, block.timestamp);
-        swapCount++;
-
-        emit SwapExecuted(tokenIn, tokenOut, amountIn);
+        assembly {
+            tokenIn := mload(add(path, 20))
+            tokenOut := mload(add(add(path, 0x20), lastTokenOffset))
+        }
     }
 
     function withdrawERC20(address _token, address _to, uint256 _amount) external onlyOwner {
@@ -137,27 +132,6 @@ contract ViktorASW is Ownable {
         }
     }
 
-    function checkPool(address _tokenIn, address _tokenOut, uint24 _fee) external view returns (address) {
-        address pool = i_uniswapFactory.getPool(_tokenIn, _tokenOut, _fee);
-        return pool;
-    }
-
-    function checkLiquidity(address _tokenIn, address _tokenOut, uint24 _fee) external view returns (uint128) {
-        address pool = i_uniswapFactory.getPool(_tokenIn, _tokenOut, _fee);
-
-        if(pool == address(0)) return 0;
-        
-        return IUniswapV3Pool(pool).liquidity();
-    }
-
-    function getPoolPrice(address _tokenIn, address _tokenOut, uint24 _fee) external view returns (uint160) {
-        address pool = i_uniswapFactory.getPool(_tokenIn, _tokenOut, _fee);
-        if(pool == address(0)) return 0;
-        
-        (uint160 sqrtPriceX96,,,,,,) = IUniswapV3Pool(pool).slot0();
-        return sqrtPriceX96;
-    }
-
     function getSwap(uint256 _swapId) external view returns(Swap memory){
         return s_swaps[_swapId];
     }
@@ -167,41 +141,4 @@ contract ViktorASW is Ownable {
     }
 
 
-}
-
-interface ISwapRouter02 {
-    struct ExactInputSingleParams {
-        address tokenIn;
-        address tokenOut;
-        uint24 fee;
-        address recipient;
-        uint256 amountIn;
-        uint256 amountOutMinimum;
-        uint160 sqrtPriceLimitX96;
-    }
-
-    function exactInputSingle(ExactInputSingleParams calldata params)
-        external
-        payable
-        returns (uint256 amountOut);
-
-    struct ExactOutputSingleParams {
-        address tokenIn;
-        address tokenOut;
-        uint24 fee;
-        address recipient;
-        uint256 amountOut;
-        uint256 amountInMaximum;
-        uint160 sqrtPriceLimitX96;
-    }
-
-    function exactOutputSingle(ExactOutputSingleParams calldata params)
-        external
-        payable
-        returns (uint256 amountIn);
-}
-
-interface IWETH is IERC20 {
-    function deposit() external payable;
-    function withdraw(uint256 amount) external;
 }

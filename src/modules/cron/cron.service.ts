@@ -25,7 +25,10 @@ export class CronService {
   ) {}
 
   @Cron(CronExpression.EVERY_DAY_AT_9AM)
-  async handleWeekBasedAnalysisJob(mode: 'test' | 'live' = 'live') {
+  async handleWeekBasedAnalysisJob(
+    mode: 'test' | 'live' = 'live',
+    skipPastAnalysis = false,
+  ) {
     if (mode === 'test') {
       this.log('Running complete analysis in test mode');
     }
@@ -38,14 +41,16 @@ export class CronService {
         this.log(`Analysis task completed in ${duration}ms`);
       };
 
-      if (mode === 'live') {
+      if (mode === 'live' && !skipPastAnalysis) {
         this.log('Evaluating past week-based analysis...');
 
         const pastAnalysisRecord =
           await this.analysisService.evaluatePastAnalysis();
 
         if (pastAnalysisRecord && pastAnalysisRecord?.results.length) {
-          await this.transactionService.sellTokens(pastAnalysisRecord.results);
+          await this.transactionService.sellPastAnalysisTokens(
+            pastAnalysisRecord.results,
+          );
         }
 
         this.log(

@@ -1,0 +1,1 @@
+export const MOBULA_ETHER_ID = 100004304;
