@@ -4,6 +4,7 @@ CREATE TABLE token_metadata (
     name VARCHAR(255) NOT NULL,
     weth_pool_address VARCHAR(255),
     usdc_pool_address VARCHAR(255),
+    usdt_pool_address VARCHAR(255),
     chain TEXT NOT NULL,
     created_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );

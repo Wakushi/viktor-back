@@ -10,6 +10,7 @@ import { PuppeteerService } from 'src/shared/services/puppeteer.service';
 import { formatWeekAnalysisResults } from 'src/shared/utils/helpers';
 import { Collection } from '../supabase/entities/collections.type';
 import { LogGateway } from 'src/shared/services/log-gateway';
+import { TransactionService } from '../transaction/transaction.service';
 
 @Injectable()
 export class CronService {
@@ -20,10 +21,14 @@ export class CronService {
     private readonly puppeteerService: PuppeteerService,
     private readonly analysisService: AnalysisService,
     private readonly logGateway: LogGateway,
+    private readonly transactionService: TransactionService,
   ) {}
 
   @Cron(CronExpression.EVERY_DAY_AT_9AM)
-  async handleWeekBasedAnalysisJob(mode: 'test' | 'live' = 'live') {
+  async handleWeekBasedAnalysisJob(
+    mode: 'test' | 'live' = 'live',
+    skipPastAnalysis = false,
+  ) {
     if (mode === 'test') {
       this.log('Running complete analysis in test mode');
     }
@@ -36,10 +41,17 @@ export class CronService {
         this.log(`Analysis task completed in ${duration}ms`);
       };
 
-      if (mode === 'live') {
+      if (mode === 'live' && !skipPastAnalysis) {
         this.log('Evaluating past week-based analysis...');
 
-        await this.analysisService.evaluatePastAnalysis();
+        const pastAnalysisRecord =
+          await this.analysisService.evaluatePastAnalysis();
+
+        if (pastAnalysisRecord && pastAnalysisRecord?.results.length) {
+          await this.transactionService.sellPastAnalysisTokens(
+            pastAnalysisRecord.results,
+          );
+        }
 
         this.log(
           'Evaluated past analysis performances. Starting week-based analysis task...',
@@ -58,6 +70,13 @@ export class CronService {
       this.log('Fetching fear and greed index..');
 
       const fearAndGreedIndex = await this.puppeteerService.getFearAndGreed();
+
+      if (mode === 'live') {
+        await this.transactionService.buyTokens(
+          analysisResults,
+          Number(fearAndGreedIndex),
+        );
+      }
 
       this.log('Saving results..');
 
@@ -102,5 +121,9 @@ export class CronService {
   private log(message: string) {
     this.logger.log(message);
     this.logGateway.sendLog(message);
+  }
+
+  public async test() {
+    await this.transactionService.test();
   }
 }

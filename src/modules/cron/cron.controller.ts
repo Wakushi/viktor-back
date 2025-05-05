@@ -7,7 +7,18 @@ export class CronController {
 
   @Post()
   @HttpCode(200)
-  async runWeekAnalysisCron(@Body() body: { mode: 'test' | 'live' }) {
-    await this.cronService.handleWeekBasedAnalysisJob(body.mode);
+  async runWeekAnalysisCron(
+    @Body() body: { mode: 'test' | 'live'; skipPastAnalysis: string },
+  ) {
+    await this.cronService.handleWeekBasedAnalysisJob(
+      body.mode,
+      body.skipPastAnalysis === 'true',
+    );
+  }
+
+  @Post('test')
+  @HttpCode(200)
+  async test() {
+    await this.cronService.test();
   }
 }

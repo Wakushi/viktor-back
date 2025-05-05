@@ -28,7 +28,6 @@ import {
   ELEVEN_DAYS_MS,
 } from './helpers/text-generation';
 import { Collection } from '../supabase/entities/collections.type';
-import { getAllocationRatio } from './helpers/utils';
 import { getAddress, isAddress } from 'viem';
 import { SUPPORTED_CHAIN_IDS } from '../mobula/constants';
 import {
@@ -36,7 +35,6 @@ import {
   DailyOHLCV,
 } from '../tokens/entities/coin-codex.type';
 import { FakeWalletSnapshot } from './entities/fake-wallet';
-import { Position } from './entities/position.type';
 import { fetchWithRetry } from './helpers/utils';
 import { TokensService } from '../tokens/tokens.service';
 import { LogGateway } from 'src/shared/services/log-gateway';
@@ -58,7 +56,7 @@ export class AnalysisService {
     private readonly logGateway: LogGateway,
   ) {}
 
-  public async seekMarketBuyingTargets(): Promise<any> {
+  public async seekMarketBuyingTargets(limit: number = 5): Promise<any> {
     try {
       this.log('Started token search...');
 
@@ -70,9 +68,13 @@ export class AnalysisService {
       const analysis: TokenWeekAnalysisResult[] =
         await this.analyzeTokens(tokens);
 
-      this.log(`Analysis completed ! ${analysis.length} results available.`);
+      const buyingTargets = analysis.slice(0, limit);
 
-      return analysis;
+      this.log(
+        `Analysis completed ! ${buyingTargets.length} results available.`,
+      );
+
+      return buyingTargets;
     } catch (error) {
       console.error('Error while seeking market buying targets :', error);
       await this.deleteOHLCVDirectory();
@@ -89,7 +91,7 @@ export class AnalysisService {
 
     const analysisResults: TokenWeekAnalysisResult[] = [];
 
-    const MINIMUM_CONFIDENCE = 0.6;
+    const MINIMUM_CONFIDENCE = 0.7;
 
     let batchSize = 10;
     let batchCounter = 1;
@@ -554,7 +556,7 @@ export class AnalysisService {
     });
   }
 
-  public async evaluatePastAnalysis(date?: Date) {
+  public async evaluatePastAnalysis(date?: Date): Promise<WeekAnalysis | null> {
     try {
       this.log("Fetching yesterday's analysis..");
 
@@ -617,9 +619,12 @@ export class AnalysisService {
           performance: stringifiedPerformance,
         },
       );
+
+      return analysis;
     } catch (error) {
       this.log("Failed to evaluate yesterday's analysis");
       this.log(error);
+      return null;
     }
   }
 
@@ -727,93 +732,6 @@ export class AnalysisService {
       sold: stats.sold,
     }));
   }
-
-  public async requestTokenBuy(
-    analysis: TokenWeekAnalysisResult[],
-    fearAndGreed: number,
-  ): Promise<void> {
-    if (!analysis?.length || !fearAndGreed) return;
-
-    this.log('Buying tokens...');
-
-    const USDC_MOBULA_ID = 100012309;
-
-    const fakeWallet = await this.getLatestFakeWalletSnapshot();
-    const balanceUsd = fakeWallet.tokens[USDC_MOBULA_ID];
-
-    if (!balanceUsd || balanceUsd <= 0) {
-      this.log('No USDC balance available');
-      return;
-    }
-
-    const topResults = analysis.filter((a) => a.confidence >= 0.7);
-
-    if (!topResults.length) return;
-
-    const totalConfidence = topResults.reduce(
-      (sum, curr) => sum + curr.confidence,
-      0,
-    );
-
-    const avgConfidence = totalConfidence / topResults.length;
-    const ratio = getAllocationRatio(avgConfidence, fearAndGreed);
-
-    const totalUsdToAllocate = balanceUsd * ratio;
-
-    const tokensAllocations = topResults.map((analysis) => {
-      const pct = analysis.confidence / totalConfidence;
-      const usdAmount = pct * totalUsdToAllocate;
-
-      const tokenPrice = analysis.token.price ?? 0;
-      const amountBought = tokenPrice > 0 ? usdAmount / tokenPrice : 0;
-
-      return {
-        token: analysis.token,
-        usdAmount,
-        amountBought,
-      };
-    });
-
-    const updatedTokens: Record<string, number> = {
-      ...fakeWallet.tokens,
-    };
-
-    updatedTokens[USDC_MOBULA_ID] -= totalUsdToAllocate;
-
-    for (const allocation of tokensAllocations) {
-      if (!updatedTokens[allocation.token.token_id]) {
-        updatedTokens[allocation.token.token_id] = 0;
-      }
-
-      updatedTokens[allocation.token.token_id] += allocation.amountBought;
-    }
-
-    const updatedFakeWallet: FakeWalletSnapshot = {
-      ...fakeWallet,
-      tokens: updatedTokens,
-    };
-
-    await this.updateFakeWalletSnapshot(updatedFakeWallet);
-
-    await Promise.all(
-      tokensAllocations.map((allocation) => {
-        return this.supabaseService.insertSingle<Position>(
-          Collection.POSITIONS,
-          {
-            token_id: allocation.token.token_id,
-            amount: allocation.amountBought,
-            bought_at_price: allocation.token.price,
-            bought_at_timestamp: new Date().toISOString(),
-            created_at: new Date(),
-          },
-        );
-      }),
-    );
-
-    this.log(`Opened ${tokensAllocations.length} new positions ! `);
-  }
-
-  public async test() {}
 
   private async insertManyWeekObservations(
     weekObservations: Omit<WeekObservation, 'id'>[],

@@ -1,0 +1,1 @@
+export const MIN_USD_AMOUNT_TO_ALLOCATE = 5;
