@@ -356,7 +356,20 @@ export class TransactionService {
         args: [path, amountIn, minAmountOut],
       });
 
-      const txHash = await walletClient.writeContract(request);
+      const gasEstimate = await publicClient.estimateContractGas({
+        account,
+        address: viktorAswContractAddress,
+        abi: VIKTOR_ASW_ABI,
+        functionName: 'swapTokens',
+        args: [path, amountIn, minAmountOut],
+      });
+
+      const gasWithBuffer = (gasEstimate * 12n) / 10n;
+
+      const txHash = await walletClient.writeContract({
+        ...request,
+        gas: gasWithBuffer,
+      });
 
       const receipt = await publicClient.waitForTransactionReceipt({
         hash: txHash,
@@ -576,6 +589,6 @@ export class TransactionService {
   }
 
   public async test() {
-    await this.sellAllTokens(MobulaChain.BASE);
+    // await this.sellAllTokens(MobulaChain.BASE);
   }
 }
