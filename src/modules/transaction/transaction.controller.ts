@@ -1,4 +1,4 @@
-import { Controller, Get } from '@nestjs/common';
+import { Controller, Get, Param } from '@nestjs/common';
 import { TransactionService } from './transaction.service';
 import { MobulaService } from '../mobula/mobula.service';
 import { VIKTOR_ASW_CONTRACT_ADDRESSES } from './contracts/constants';
@@ -15,11 +15,12 @@ export class TransactionController {
   async getSwaps() {
     return this.transactionService.getSwaps();
   }
-  
-  @Get('wallet')
-  async getWalletHistory() {
+
+  @Get('wallet/:from')
+  async getWalletHistory(@Param('from') from: string) {
     return this.mobulaService.getWalletHistory(
       VIKTOR_ASW_CONTRACT_ADDRESSES[MobulaChain.BASE],
+      from ? Number(from) : 0,
     );
   }
 }

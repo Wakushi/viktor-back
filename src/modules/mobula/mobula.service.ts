@@ -212,9 +212,12 @@ export class MobulaService {
     return data as MobulaOHLCV[];
   }
 
-  public async getWalletHistory(wallet: Address): Promise<WalletHistory> {
+  public async getWalletHistory(
+    wallet: Address,
+    from: number,
+  ): Promise<WalletHistory> {
     const { data, error } = await this.makeRequest(
-      `/wallet/history?wallet=${wallet}`,
+      `/wallet/history?wallet=${wallet}&from=${from}`,
     );
 
     if (error) {
