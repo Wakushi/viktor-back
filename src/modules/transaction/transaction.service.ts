@@ -395,6 +395,8 @@ export class TransactionService {
   }): Promise<QuotedToken[]> {
     if (!results?.length) return [];
 
+    results.sort((a, b) => b.confidence - a.confidence);
+
     const totalConfidence = results.reduce(
       (sum, curr) => sum + curr.confidence,
       0,
@@ -444,6 +446,9 @@ export class TransactionService {
           path,
         });
       } catch (error) {
+        this.log(
+          `Error quoting ${result.token.name}: ${error?.message || error}`,
+        );
         return await this.getQuotedTokens({
           results: results.filter(
             ({ token }) => token.token_id !== result.token.token_id,
