@@ -8,7 +8,6 @@ import {
   Post,
 } from '@nestjs/common';
 import { AnalysisService } from './analysis.service';
-import { Collection } from '../supabase/entities/collections.type';
 
 @Controller('analysis')
 export class AnalysisController {
@@ -17,9 +16,7 @@ export class AnalysisController {
   @Get()
   @HttpCode(200)
   async getAnalysisHistory() {
-    const results = await this.analysisService.getAnalysisRecords(
-      Collection.WEEK_ANALYSIS_RESULTS,
-    );
+    const results = await this.analysisService.getAnalysisRecords();
 
     if (!results) return;
 
@@ -59,5 +56,4 @@ export class AnalysisController {
 
     return await this.analysisService.trainAnalysis(tokenName);
   }
-
 }

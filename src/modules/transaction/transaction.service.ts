@@ -20,6 +20,7 @@ import {
   MobulaChain,
   MobulaExtendedToken,
   MobulaMultiDataToken,
+  TokenBalance,
   TokenBalanceAsset,
 } from '../mobula/entities/mobula.entities';
 import {
@@ -223,7 +224,7 @@ export class TransactionService {
     }
   }
 
-  private async sellToken({
+  public async sellToken({
     chain,
     tokenAddress,
     token,
@@ -583,6 +584,24 @@ export class TransactionService {
   }
 
   public async sellAllTokens(chain: MobulaChain) {
+    const sellableTokens = await this.getPortfolioSellable(chain);
+
+    for (const token of sellableTokens) {
+      this.log(
+        `Selling ${token.token_balance.toFixed(2)} ${token.asset.name} (${token.asset.symbol}) on ${chain}`,
+      );
+
+      await this.sellToken({
+        chain,
+        tokenAddress: getAddress(token.asset.contracts[0]),
+        token: token.asset,
+      });
+    }
+  }
+
+  public async getPortfolioSellable(
+    chain: MobulaChain,
+  ): Promise<TokenBalance[]> {
     const portfolio = await this.mobulaService.getWalletPortfolio(
       VIKTOR_ASW_CONTRACT_ADDRESSES[chain],
       chain,
@@ -599,17 +618,7 @@ export class TransactionService {
       );
     });
 
-    for (const token of sellableTokens) {
-      this.log(
-        `Selling ${token.token_balance.toFixed(2)} ${token.asset.name} (${token.asset.symbol}) on ${chain}`,
-      );
-
-      await this.sellToken({
-        chain,
-        tokenAddress: getAddress(token.asset.contracts[0]),
-        token: token.asset,
-      });
-    }
+    return sellableTokens;
   }
 
   public async test() {

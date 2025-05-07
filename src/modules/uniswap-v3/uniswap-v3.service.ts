@@ -16,7 +16,6 @@ import {
   getAddress,
   Hex,
   http,
-  parseUnits,
   zeroAddress,
 } from 'viem';
 import { MobulaChain } from '../mobula/entities/mobula.entities';
@@ -178,10 +177,7 @@ export class UniswapV3Service {
       throw new Error('Pools too shallow for single hop');
     }
 
-    const publicClient = createPublicClient({
-      chain: this.getChain(chain),
-      transport: http(this.getRpcUrl(chain)),
-    });
+    const publicClient = this.getRpcClient(chain);
 
     const { result: singleHopResult } = await publicClient.simulateContract({
       address: quoterAddress,
@@ -283,10 +279,7 @@ export class UniswapV3Service {
 
     const path = encodePath(tokens, [feeA, feeB]);
 
-    const publicClient = createPublicClient({
-      chain: this.getChain(chain),
-      transport: http(this.getRpcUrl(chain)),
-    });
+    const publicClient = this.getRpcClient(chain);
 
     const { result } = await publicClient.simulateContract({
       address: quoterAddress,
@@ -313,10 +306,7 @@ export class UniswapV3Service {
   }): Promise<Pool> {
     const fees = [FeeAmount.LOW, FeeAmount.MEDIUM, FeeAmount.HIGH];
 
-    const publicClient = createPublicClient({
-      chain: this.getChain(chain),
-      transport: http(this.getRpcUrl(chain)),
-    });
+    const publicClient = this.getRpcClient(chain);
 
     let bestPool: Pool | null = null;
 
@@ -396,5 +386,12 @@ export class UniswapV3Service {
       default:
         throw new Error(`Unsupported chain: ${chainName}`);
     }
+  }
+
+  public getRpcClient(chainName: MobulaChain) {
+    return createPublicClient({
+      chain: this.getChain(chainName),
+      transport: http(this.getRpcUrl(chainName)),
+    });
   }
 }

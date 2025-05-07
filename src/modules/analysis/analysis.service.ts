@@ -225,7 +225,7 @@ export class AnalysisService {
           const totalSim = group.reduce((sum, ob) => sum + ob.similarity, 0);
 
           weightedSums[outcome] = totalSim;
-          
+
           weightedReturns[outcome] =
             group.reduce(
               (sum, ob) => sum + ob.similarity * ob.next_day_change,
@@ -777,12 +777,10 @@ export class AnalysisService {
     }
   }
 
-  public async getAnalysisRecords(
-    collection: Collection,
-  ): Promise<DayAnalysisRecord[] | null> {
+  public async getAnalysisRecords(): Promise<DayAnalysisRecord[] | null> {
     try {
       const { data, error } = await this.supabaseService.client
-        .from(collection)
+        .from(Collection.WEEK_ANALYSIS_RESULTS)
         .select('*');
 
       if (error) {
@@ -889,6 +887,27 @@ export class AnalysisService {
     snapshot: FakeWalletSnapshot,
   ): Promise<any> {
     return this.supabaseService.updateSingle(Collection.FAKE_WALLET, snapshot);
+  }
+
+  public async getLastAnalysisRecord(): Promise<DayAnalysisRecord | null> {
+    try {
+      const { data, error } = await this.supabaseService.client
+        .from(Collection.WEEK_ANALYSIS_RESULTS)
+        .select('*')
+        .or('test.is.null,test.eq.false')
+        .order('created_at', { ascending: false })
+        .limit(1)
+        .single();
+
+      if (error) {
+        throw new SupabaseError('Failed to fetch last analysis result', error);
+      }
+
+      return data;
+    } catch (error) {
+      console.error('Error fetching last analysis result:', error);
+      return null;
+    }
   }
 
   private log(message: string) {
