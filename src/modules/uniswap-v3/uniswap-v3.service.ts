@@ -32,6 +32,7 @@ import {
 import { encodePath } from 'src/shared/utils/helpers';
 import { MobulaService } from '../mobula/mobula.service';
 import { MOBULA_ETHER_ID } from '../mobula/entities/constants';
+import { Pool } from './entities/pool.entity';
 
 @Injectable()
 export class UniswapV3Service {
@@ -89,13 +90,17 @@ export class UniswapV3Service {
     tokenOut,
     tokenOutDecimals,
     tokenOutPrice,
+    tokenInPrice,
     amountIn,
+    tokenInDecimals,
   }: {
     chain: MobulaChain;
     tokenIn: Address;
     tokenOut: Address;
     tokenOutDecimals: number;
+    tokenInPrice: number;
     tokenOutPrice: number;
+    tokenInDecimals: number;
     amountIn: bigint;
   }): Promise<{ path: Hex; minAmountOut: bigint }> {
     try {
@@ -106,6 +111,8 @@ export class UniswapV3Service {
         tokenOutDecimals,
         amountIn,
         tokenOutPrice,
+        tokenInPrice,
+        tokenInDecimals,
       });
 
       return { path, minAmountOut };
@@ -128,23 +135,25 @@ export class UniswapV3Service {
     tokenIn,
     tokenOut,
     tokenOutDecimals,
-    amountIn,
     tokenOutPrice,
+    amountIn,
+    tokenInPrice,
+    tokenInDecimals,
   }: {
     chain: MobulaChain;
     tokenIn: Address;
     tokenOut: Address;
+    tokenOutPrice: number;
     tokenOutDecimals: number;
     amountIn: bigint;
-    tokenOutPrice: number;
+    tokenInPrice: number;
+    tokenInDecimals: number;
   }): Promise<{ path: Hex; minAmountOut: bigint }> {
     const quoterAddress = QUOTER_CONTRACT_ADDRESSES[chain];
 
     if (!quoterAddress) throw new Error(`No Quoter contract for ${chain}`);
 
-    const minPoolLiquidity = parseUnits('100000', tokenOutDecimals);
-
-    const { pool, fee, liquidity } = await this.getBestPool({
+    const { pool, fee, liquidityIn, liquidityOut } = await this.getBestPool({
       chain,
       tokenIn,
       tokenOut,
@@ -154,13 +163,19 @@ export class UniswapV3Service {
       throw new Error('No single-hop pools');
     }
 
-    const MIN_LIQUIDITY_USD = 200;
+    const MIN_LIQUIDITY_USD = 5000;
 
-    const liquidityPrice =
-      Number(formatUnits(liquidity, tokenOutDecimals)) * tokenOutPrice;
+    const liquidityInPrice =
+      Number(formatUnits(liquidityIn, tokenInDecimals)) * tokenInPrice;
 
-    if (liquidityPrice < MIN_LIQUIDITY_USD) {
-      throw new Error('Pools too shallow');
+    const liquidityOutPrice =
+      Number(formatUnits(liquidityOut, tokenOutDecimals)) * tokenOutPrice;
+
+    if (
+      liquidityOutPrice < MIN_LIQUIDITY_USD ||
+      liquidityInPrice < MIN_LIQUIDITY_USD
+    ) {
+      throw new Error('Pools too shallow for single hop');
     }
 
     const publicClient = createPublicClient({
@@ -219,7 +234,7 @@ export class UniswapV3Service {
     const {
       pool: poolA,
       fee: feeA,
-      liquidity: liquidityA,
+      liquidityOut: liquidityAOut,
     } = await this.getBestPool({
       chain,
       tokenIn: legA,
@@ -229,7 +244,7 @@ export class UniswapV3Service {
     const {
       pool: poolB,
       fee: feeB,
-      liquidity: liquidityB,
+      liquidityOut: liquidityBOut,
     } = await this.getBestPool({
       chain,
       tokenIn: middle,
@@ -250,10 +265,10 @@ export class UniswapV3Service {
     const wethPrice = wethMarketData.price;
 
     const liquidityAprice =
-      Number(formatUnits(liquidityA, WETH_DECIMALS)) * wethPrice;
+      Number(formatUnits(liquidityAOut, WETH_DECIMALS)) * wethPrice;
 
     const liquidityBPrice =
-      Number(formatUnits(liquidityB, tokenOutDecimals)) * tokenOutPrice;
+      Number(formatUnits(liquidityBOut, tokenOutDecimals)) * tokenOutPrice;
 
     if (
       liquidityAprice < MIN_LIQUIDITY_USD ||
@@ -295,7 +310,7 @@ export class UniswapV3Service {
     chain: MobulaChain;
     tokenIn: Address;
     tokenOut: Address;
-  }): Promise<{ pool: Address; fee: FeeAmount; liquidity: bigint }> {
+  }): Promise<Pool> {
     const fees = [FeeAmount.LOW, FeeAmount.MEDIUM, FeeAmount.HIGH];
 
     const publicClient = createPublicClient({
@@ -303,8 +318,7 @@ export class UniswapV3Service {
       transport: http(this.getRpcUrl(chain)),
     });
 
-    let bestPool: { pool: Address; fee: FeeAmount; liquidity: bigint } | null =
-      null;
+    let bestPool: Pool | null = null;
 
     for (const fee of fees) {
       const pool = await this.getPoolAddress({
@@ -329,8 +343,32 @@ export class UniswapV3Service {
         args: [pool],
       });
 
-      if (!bestPool || tokenOutBalance > bestPool.liquidity) {
-        bestPool = { pool, fee, liquidity: tokenOutBalance };
+      const tokenInBalance = await publicClient.readContract({
+        address: tokenIn,
+        abi: [
+          {
+            name: 'balanceOf',
+            type: 'function',
+            stateMutability: 'view',
+            inputs: [{ name: 'account', type: 'address' }],
+            outputs: [{ type: 'uint256' }],
+          },
+        ],
+        functionName: 'balanceOf',
+        args: [pool],
+      });
+
+      if (
+        !bestPool ||
+        (tokenOutBalance > bestPool.liquidityOut &&
+          tokenInBalance > bestPool.liquidityIn)
+      ) {
+        bestPool = {
+          pool,
+          fee,
+          liquidityOut: tokenOutBalance,
+          liquidityIn: tokenInBalance,
+        };
       }
     }
 

@@ -250,16 +250,6 @@ export class TransactionService {
 
     if (!tokenMarketData) return;
 
-    const { path, minAmountOut } =
-      await this.uniswapV3Service.findShortestViablePath({
-        chain,
-        tokenIn: getAddress(tokenAddress),
-        amountIn: tokenAmount,
-        tokenOut: USDC_ADDRESSES[chain],
-        tokenOutDecimals: USDC_DECIMALS,
-        tokenOutPrice: 1,
-      });
-
     const contract = tokenMarketData.contracts.find(
       (c) => c.blockchain === chain,
     );
@@ -267,6 +257,18 @@ export class TransactionService {
     if (!contract) {
       throw new Error(`Can't find contract for ${token.name} on ${chain}`);
     }
+
+    const { path, minAmountOut } =
+      await this.uniswapV3Service.findShortestViablePath({
+        chain,
+        amountIn: tokenAmount,
+        tokenIn: getAddress(tokenAddress),
+        tokenInPrice: tokenMarketData.price,
+        tokenInDecimals: contract.decimals,
+        tokenOut: USDC_ADDRESSES[chain],
+        tokenOutPrice: 1,
+        tokenOutDecimals: USDC_DECIMALS,
+      });
 
     const tokenTotalPrice =
       tokenMarketData.price *
@@ -469,6 +471,8 @@ export class TransactionService {
             amountIn: parseUnits(usdAmountAllocated.toString(), USDC_DECIMALS),
             tokenOutDecimals: result.token.decimals,
             tokenOutPrice: tokenPriceUsd,
+            tokenInPrice: 1,
+            tokenInDecimals: USDC_DECIMALS,
           });
 
         quotedTokens.push({
