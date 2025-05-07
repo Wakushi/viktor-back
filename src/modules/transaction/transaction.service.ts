@@ -82,10 +82,12 @@ export class TransactionService {
   public async buyTokens(
     results: TokenWeekAnalysisResult[],
     fearAndGreed: number,
-  ): Promise<void> {
+  ): Promise<TokenWeekAnalysisResult[]> {
     if (!results?.length || !fearAndGreed) return;
 
     const tokenByChain: Map<MobulaChain, TokenWeekAnalysisResult[]> = new Map();
+    const resultByTokenId: Map<number, TokenWeekAnalysisResult> = new Map();
+    const tokenBought: TokenWeekAnalysisResult[] = [];
 
     const latestTokenMetrics = await this.mobulaService.getTokenMultiData(
       results.map((result) => result.token.token_id),
@@ -99,6 +101,7 @@ export class TransactionService {
       }
 
       tokenByChain.get(blockchain)?.push(result);
+      resultByTokenId.set(result.token.token_id, result);
     }
 
     for (const [chain] of tokenByChain.entries()) {
@@ -168,6 +171,9 @@ export class TransactionService {
           this.log(
             `Swap executed: ${BLOCK_EXPLORER_TX_URL[chain]}/${swap.transaction_hash}`,
           );
+
+          const tokenResult = resultByTokenId.get(quotedToken.token.token_id);
+          tokenBought.push(tokenResult);
         } catch (error) {
           this.logger.error(error);
         }
@@ -175,6 +181,7 @@ export class TransactionService {
     }
 
     this.log(`Buying tokens completed !`);
+    return tokenBought;
   }
 
   public async sellPastAnalysisTokens(
@@ -225,12 +232,17 @@ export class TransactionService {
     tokenAddress: Address;
     token: MobulaExtendedToken | TokenBalanceAsset;
   }): Promise<void> {
+    this.log(`Preparing to sell ${token.name}`);
+
     const tokenAmount = await this.getERC20Balance(
       chain,
       getAddress(tokenAddress),
     );
 
-    if (!tokenAmount || tokenAmount === BigInt(0)) return;
+    if (!tokenAmount || tokenAmount === BigInt(0)) {
+      this.log(`No balance found for ${token.name}`);
+      return;
+    }
 
     const tokenMarketData = await this.mobulaService.getTokenMarketDataById(
       (token as MobulaExtendedToken)?.token_id ?? token.id,
@@ -248,9 +260,17 @@ export class TransactionService {
         tokenOutPrice: 1,
       });
 
+    const contract = tokenMarketData.contracts.find(
+      (c) => c.blockchain === chain,
+    );
+
+    if (!contract) {
+      throw new Error(`Can't find contract for ${token.name} on ${chain}`);
+    }
+
     const tokenTotalPrice =
       tokenMarketData.price *
-      Number(formatUnits(tokenAmount, tokenMarketData.decimals));
+      Number(formatUnits(tokenAmount, contract.decimals));
 
     let slippage = this.INITIAL_SLIPPAGE_PERCENT;
     let success = false;

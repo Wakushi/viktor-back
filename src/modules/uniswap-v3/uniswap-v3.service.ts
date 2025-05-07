@@ -105,6 +105,7 @@ export class UniswapV3Service {
         tokenOut,
         tokenOutDecimals,
         amountIn,
+        tokenOutPrice,
       });
 
       return { path, minAmountOut };
@@ -128,12 +129,14 @@ export class UniswapV3Service {
     tokenOut,
     tokenOutDecimals,
     amountIn,
+    tokenOutPrice,
   }: {
     chain: MobulaChain;
     tokenIn: Address;
     tokenOut: Address;
     tokenOutDecimals: number;
     amountIn: bigint;
+    tokenOutPrice: number;
   }): Promise<{ path: Hex; minAmountOut: bigint }> {
     const quoterAddress = QUOTER_CONTRACT_ADDRESSES[chain];
 
@@ -151,7 +154,12 @@ export class UniswapV3Service {
       throw new Error('No single-hop pools');
     }
 
-    if (liquidity < minPoolLiquidity) {
+    const MIN_LIQUIDITY_USD = 200;
+
+    const liquidityPrice =
+      Number(formatUnits(liquidity, tokenOutDecimals)) * tokenOutPrice;
+
+    if (liquidityPrice < MIN_LIQUIDITY_USD) {
       throw new Error('Pools too shallow');
     }
 

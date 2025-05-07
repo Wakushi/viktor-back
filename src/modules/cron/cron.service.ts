@@ -58,7 +58,7 @@ export class CronService {
         );
       }
 
-      const analysisResults: TokenWeekAnalysisResult[] =
+      let analysisResults: TokenWeekAnalysisResult[] =
         await this.analysisService.seekMarketBuyingTargets();
 
       if (!analysisResults.length) {
@@ -72,7 +72,7 @@ export class CronService {
       const fearAndGreedIndex = await this.puppeteerService.getFearAndGreed();
 
       if (mode === 'live') {
-        await this.transactionService.buyTokens(
+        analysisResults = await this.transactionService.buyTokens(
           analysisResults,
           Number(fearAndGreedIndex),
         );

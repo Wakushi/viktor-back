@@ -220,9 +220,12 @@ export class AnalysisService {
 
       for (const outcome of ['bullish', 'bearish'] as const) {
         const group = outcomeGroups[outcome];
+
         if (group.length > 0) {
           const totalSim = group.reduce((sum, ob) => sum + ob.similarity, 0);
+
           weightedSums[outcome] = totalSim;
+          
           weightedReturns[outcome] =
             group.reduce(
               (sum, ob) => sum + ob.similarity * ob.next_day_change,
