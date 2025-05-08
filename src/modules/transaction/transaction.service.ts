@@ -71,7 +71,8 @@ export class TransactionService {
   public async getSwaps(): Promise<Swap[]> {
     const { data, error } = await this.supabaseService.client
       .from(Collection.SWAPS)
-      .select('*');
+      .select('*')
+      .order('created_at', { ascending: false });
 
     if (error) {
       throw new Error(error.message);
