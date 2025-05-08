@@ -1,11 +1,14 @@
 import {
   BadRequestException,
   Controller,
+  DefaultValuePipe,
   Get,
   HttpCode,
   InternalServerErrorException,
   Param,
+  ParseIntPipe,
   Post,
+  Query,
 } from '@nestjs/common';
 import { AnalysisService } from './analysis.service';
 
@@ -15,8 +18,15 @@ export class AnalysisController {
 
   @Get()
   @HttpCode(200)
-  async getAnalysisHistory() {
-    const results = await this.analysisService.getAnalysisRecords();
+  async getAnalysisHistory(
+    @Query('page', new DefaultValuePipe(1), ParseIntPipe) page: number,
+    @Query('limit', new DefaultValuePipe(10), ParseIntPipe) limit: number,
+  ) {
+    if (page < 1 || limit < 1) {
+      throw new BadRequestException('Page and limit must be positive integers');
+    }
+
+    const results = await this.analysisService.getAnalysisRecords(limit, page);
 
     if (!results) return;
 

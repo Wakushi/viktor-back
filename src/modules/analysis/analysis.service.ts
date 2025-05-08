@@ -805,11 +805,19 @@ export class AnalysisService {
     }
   }
 
-  public async getAnalysisRecords(): Promise<DayAnalysisRecord[] | null> {
+  public async getAnalysisRecords(
+    limit = 10,
+    page = 1,
+  ): Promise<DayAnalysisRecord[] | null> {
     try {
+      const from = (page - 1) * limit;
+      const to = from + limit - 1;
+
       const { data, error } = await this.supabaseService.client
         .from(Collection.WEEK_ANALYSIS_RESULTS)
-        .select('*');
+        .select('*')
+        .order('created_at', { ascending: false })
+        .range(from, to);
 
       if (error) {
         throw new SupabaseError('Failed to fetch analysis results', error);
