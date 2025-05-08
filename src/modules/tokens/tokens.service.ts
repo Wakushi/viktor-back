@@ -1,5 +1,5 @@
 import { Injectable, Logger } from '@nestjs/common';
-import { Address, zeroAddress } from 'viem';
+import { Address, formatUnits, zeroAddress } from 'viem';
 import { UniswapV3Service } from 'src/modules/uniswap-v3/uniswap-v3.service';
 import { MobulaService } from '../mobula/mobula.service';
 import {
@@ -16,8 +16,13 @@ import { TokenMetadata } from './entities/metadata.type';
 import { isValidAddress } from 'src/shared/utils/helpers';
 import { SettingsService } from '../settings/settings.service';
 import { LogGateway } from 'src/shared/services/log-gateway';
-import { USDT_ADDRESSES, WRAPPED_NATIVE_ADDRESSES } from 'src/shared/utils/constants'
-import { USDC_ADDRESSES } from 'src/shared/utils/constants'
+import {
+  USDC_DECIMALS,
+  USDT_ADDRESSES,
+  WRAPPED_NATIVE_ADDRESSES,
+} from 'src/shared/utils/constants';
+import { USDC_ADDRESSES } from 'src/shared/utils/constants';
+import { ERC20_SIMPLE_ABI } from '../transaction/contracts/constants';
 
 @Injectable()
 export class TokensService {
@@ -295,6 +300,72 @@ export class TokensService {
     }
 
     return data;
+  }
+
+  public async getTokenBalance({
+    chain,
+    token,
+    account,
+  }: {
+    chain: MobulaChain;
+    token: Address;
+    account: Address;
+  }): Promise<bigint> {
+    const client = this.uniswapV3Service.getRpcClient(chain);
+
+    const balance = (await client.readContract({
+      address: token,
+      abi: ERC20_SIMPLE_ABI,
+      functionName: 'balanceOf',
+      args: [account],
+    })) as bigint;
+
+    return balance;
+  }
+
+  public async getTokenPrice(chain: MobulaChain, token: Address): Promise<any> {
+    const usdcAddress = USDC_ADDRESSES[chain];
+    const wethAddress = WRAPPED_NATIVE_ADDRESSES[chain];
+
+    const { pool, liquidityOut } = await this.uniswapV3Service.getBestPool({
+      chain,
+      tokenIn: token,
+      tokenOut: usdcAddress,
+    });
+
+    const MIN_LIQUIDITY_USD = 5000;
+    const liquidityUSDCPrice =
+      Number(formatUnits(liquidityOut, USDC_DECIMALS)) * 1;
+
+    if (liquidityUSDCPrice < MIN_LIQUIDITY_USD) {
+      const { pool: wethPool } = await this.uniswapV3Service.getBestPool({
+        chain,
+        tokenIn: token,
+        tokenOut: wethAddress,
+      });
+
+      const wethPriceInToken = await this.uniswapV3Service.getPoolPrice({
+        chain,
+        pool: wethPool,
+        tokenIn: token,
+        tokenOut: wethAddress,
+      });
+
+      const wethPriceUsdc = await this.uniswapV3Service.getWethPriceUsdc(chain);
+
+      const tokenPrice = wethPriceUsdc / wethPriceInToken;
+
+      return tokenPrice;
+    }
+
+    const price = await this.uniswapV3Service.getPoolPrice({
+      chain,
+      pool,
+      tokenIn: token,
+      tokenOut: usdcAddress,
+    });
+
+    return price;
   }
 
   private log(message: string) {

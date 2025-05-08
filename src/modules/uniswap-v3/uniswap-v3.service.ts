@@ -5,7 +5,7 @@ import {
   UNISWAP_V3_FACTORY,
   UNISWAP_V3_FACTORY_ABI,
   UNISWAP_QUOTER_V2_ABI,
-  UNISWAP_COMMON_FEES,
+  UNISWAP_V3_POOL_ABI,
 } from './entities/constants';
 import { RpcUrlConfig } from './entities/rpc-url-config.type';
 import {
@@ -32,6 +32,7 @@ import { encodePath } from 'src/shared/utils/helpers';
 import { MobulaService } from '../mobula/mobula.service';
 import { MOBULA_ETHER_ID } from '../mobula/entities/constants';
 import { Pool } from './entities/pool.entity';
+import { ERC20_SIMPLE_ABI } from '../transaction/contracts/constants';
 
 @Injectable()
 export class UniswapV3Service {
@@ -295,7 +296,7 @@ export class UniswapV3Service {
     }
   }
 
-  private async getBestPool({
+  public async getBestPool({
     chain,
     tokenIn,
     tokenOut,
@@ -363,6 +364,76 @@ export class UniswapV3Service {
     }
 
     return bestPool;
+  }
+
+  public async getPoolPrice({
+    chain,
+    tokenIn,
+    tokenOut,
+    pool,
+  }: {
+    chain: MobulaChain;
+    tokenIn: Address;
+    tokenOut: Address;
+    pool: Address;
+  }): Promise<number> {
+    const client = this.getRpcClient(chain);
+
+    const tokenInDecimals = (await client.readContract({
+      address: tokenIn,
+      abi: ERC20_SIMPLE_ABI,
+      functionName: 'decimals',
+    })) as number;
+
+    const tokenOutDecimals = (await client.readContract({
+      address: tokenOut,
+      abi: ERC20_SIMPLE_ABI,
+      functionName: 'decimals',
+    })) as number;
+
+    const [sqrtPriceX96] = (await client.readContract({
+      address: pool,
+      abi: UNISWAP_V3_POOL_ABI,
+      functionName: 'slot0',
+    })) as [bigint];
+
+    const Q96 = 2n ** 96n;
+
+    const numerator = sqrtPriceX96 * sqrtPriceX96;
+
+    const rawPrice = Number(numerator) / Number(Q96 * Q96);
+
+    const decimalAdjustment =
+      Number(10n ** BigInt(tokenOutDecimals)) /
+      Number(10n ** BigInt(tokenInDecimals));
+
+    const priceToken0InToken1 = rawPrice / decimalAdjustment;
+
+    return Number(priceToken0InToken1.toFixed(6));
+  }
+
+  public async getWethPriceUsdc(chain: MobulaChain): Promise<number> {
+    const WETH = WRAPPED_NATIVE_ADDRESSES[chain];
+    const USDC = USDC_ADDRESSES[chain];
+
+    const { pool } = await this.getBestPool({
+      chain,
+      tokenIn: WETH,
+      tokenOut: USDC,
+    });
+
+    if (!pool || pool === zeroAddress) {
+      throw new Error(`No viable WETH/USDC pool found on ${chain}`);
+    }
+
+    const wethPriceInUsdc = await this.getPoolPrice({
+      chain,
+      tokenIn: WETH,
+      tokenOut: USDC,
+      pool,
+    });
+
+    return wethPriceInUsdc;
   }
 
   private getRpcUrl(chainName: MobulaChain): string {

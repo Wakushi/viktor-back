@@ -13,8 +13,9 @@ import { LogGateway } from 'src/shared/services/log-gateway';
 import { TransactionService } from '../transaction/transaction.service';
 import { MobulaService } from '../mobula/mobula.service';
 import { MobulaChain } from '../mobula/entities/mobula.entities';
-import { UniswapV3Service } from '../uniswap-v3/uniswap-v3.service';
 import { getAddress } from 'viem';
+import { TokensService } from '../tokens/tokens.service';
+import { VIKTOR_ASW_CONTRACT_ADDRESSES } from '../transaction/contracts/constants';
 
 @Injectable()
 export class CronService {
@@ -26,8 +27,7 @@ export class CronService {
     private readonly analysisService: AnalysisService,
     private readonly logGateway: LogGateway,
     private readonly transactionService: TransactionService,
-    private readonly mobulaService: MobulaService,
-    private readonly uniswapV3Service: UniswapV3Service,
+    private readonly tokenService: TokensService,
   ) {}
 
   @Cron(CronExpression.EVERY_DAY_AT_9AM)
@@ -139,20 +139,29 @@ export class CronService {
     for (const result of analysisResults) {
       const { token, expectedNextDayChange } = result;
 
-      const tokenMarketData = await this.mobulaService.getTokenMarketDataById(
-        token.token_id,
-      );
-
       const contract = token.contracts.find((c) => c.blockchain === chain);
       const tokenAddress = getAddress(contract.address);
 
-      if (!tokenMarketData || !tokenAddress) {
+      if (!tokenAddress) {
         this.log(`Unable to find recent market data for token ${token.name}`);
         continue;
       }
 
+      const balance = await this.tokenService.getTokenBalance({
+        chain,
+        token: tokenAddress,
+        account: VIKTOR_ASW_CONTRACT_ADDRESSES[chain],
+      });
+
+      if (!balance || balance === BigInt(0)) {
+        continue;
+      }
+
       const buyingPrice = token.price;
-      const currentPrice = tokenMarketData.price;
+      const currentPrice = await this.tokenService.getTokenPrice(
+        MobulaChain.BASE,
+        tokenAddress,
+      );
 
       const priceChange = ((currentPrice - buyingPrice) / buyingPrice) * 100;
 
