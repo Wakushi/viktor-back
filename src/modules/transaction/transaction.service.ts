@@ -108,11 +108,12 @@ export class TransactionService {
     for (const [chain] of tokenByChain.entries()) {
       const tokenResults = tokenByChain.get(chain);
 
-      const totalUsdToAllocate = await this.getTotalUsdToAllocate(
+      const totalUsdToAllocate = await this.getTotalUsdToAllocate({
         chain,
         tokenResults,
         fearAndGreed,
-      );
+        full: true,
+      });
 
       this.log(`Allocating ${totalUsdToAllocate} USDC on ${chain}`);
 
@@ -529,11 +530,17 @@ export class TransactionService {
     }
   }
 
-  private async getTotalUsdToAllocate(
-    chain: MobulaChain,
-    tokenResults: TokenWeekAnalysisResult[],
-    fearAndGreed: number,
-  ): Promise<number> {
+  private async getTotalUsdToAllocate({
+    chain,
+    tokenResults,
+    fearAndGreed,
+    full = false,
+  }: {
+    chain: MobulaChain;
+    tokenResults: TokenWeekAnalysisResult[];
+    fearAndGreed: number;
+    full?: boolean;
+  }): Promise<number> {
     const usdcBalance = await this.getERC20Balance(
       chain,
       USDC_ADDRESSES[chain],
@@ -544,6 +551,12 @@ export class TransactionService {
       return 0;
     }
 
+    const formattedBalance = Number(formatUnits(usdcBalance, USDC_DECIMALS));
+
+    if (full) {
+      return formattedBalance;
+    }
+
     const totalConfidence = tokenResults.reduce(
       (sum, curr) => sum + curr.confidence,
       0,
@@ -552,7 +565,7 @@ export class TransactionService {
     const avgConfidence = totalConfidence / tokenResults.length;
     const ratio = getAllocationRatio(avgConfidence, fearAndGreed);
 
-    return Number(formatUnits(usdcBalance, USDC_DECIMALS)) * ratio;
+    return formattedBalance * ratio;
   }
 
   private getRpcUrl(chainName: MobulaChain): string {
