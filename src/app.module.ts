@@ -15,6 +15,7 @@ import { MobulaChain } from './modules/mobula/entities/mobula.entities';
 import { AnalysisModule } from './modules/analysis/analysis.module';
 import { SettingsModule } from './modules/settings/settings.module';
 import { TransactionModule } from './modules/transaction/transaction.module';
+import { WalletModule } from './modules/wallet/wallet.module';
 @Module({
   imports: [
     ConfigModule.forRoot({
@@ -51,6 +52,14 @@ import { TransactionModule } from './modules/transaction/transaction.module';
     AnalysisModule.forRoot(),
     TransactionModule.forRoot({
       privateKey: process.env.PRIVATE_KEY,
+      rpcUrls: {
+        [MobulaChain.ETHEREUM]: `https://eth-mainnet.g.alchemy.com/v2/${process.env.ALCHEMY_API_KEY}`,
+        [MobulaChain.BASE]: `https://base-mainnet.g.alchemy.com/v2/${process.env.ALCHEMY_API_KEY}`,
+        [MobulaChain.ARBITRUM]: `https://arb-mainnet.g.alchemy.com/v2/${process.env.ALCHEMY_API_KEY}`,
+        [MobulaChain.BNB]: `https://bnb-mainnet.g.alchemy.com/v2/${process.env.ALCHEMY_API_KEY}`,
+      },
+    }),
+    WalletModule.forRoot({
       rpcUrls: {
         [MobulaChain.ETHEREUM]: `https://eth-mainnet.g.alchemy.com/v2/${process.env.ALCHEMY_API_KEY}`,
         [MobulaChain.BASE]: `https://base-mainnet.g.alchemy.com/v2/${process.env.ALCHEMY_API_KEY}`,
