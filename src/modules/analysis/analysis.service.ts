@@ -185,14 +185,14 @@ export class AnalysisService {
 
       if (!observation) return null;
 
-      const similarConditions =
+      const { matchingWeekObservations, embeddings } =
         await this.embeddingService.findClosestWeekObservation({
           query: observation,
           matchCount: MATCH_COUNT,
           matchThreshold: SIMILARITY_THRESHOLD,
         });
 
-      if (!similarConditions.length) return null;
+      if (!matchingWeekObservations.length) return null;
 
       const outcomeGroups: Record<
         'bullish' | 'bearish',
@@ -202,7 +202,7 @@ export class AnalysisService {
         bearish: [],
       };
 
-      for (const condition of similarConditions) {
+      for (const condition of matchingWeekObservations) {
         if (condition.outcome) {
           outcomeGroups[condition.outcome].push(condition);
         }
@@ -254,13 +254,14 @@ export class AnalysisService {
         expectedNextDayChange: +(
           weightedReturns[predictedOutcome] ?? 0
         ).toFixed(3),
-        similarConditions,
+        similarConditions: matchingWeekObservations,
         tokenOHLCV,
         observation,
+        embeddings,
       };
     } catch (error) {
       this.log(error);
-      throw new Error('Analysis failed');
+      throw new Error(`Analysis failed for ${token.name}`);
     }
   }
 
@@ -587,31 +588,58 @@ export class AnalysisService {
       this.log('Computing performances..');
 
       const performances: TokenPerformance[] = [];
+      const weekObservations: Omit<WeekObservation, 'id'>[] = [];
 
       for (let i = 0; i < analysis.results.length; i++) {
-        const result = analysis.results[i];
-        const current = currentMarketData.find(
-          (t) => t.id === result.token.token_id,
-        );
+        const { token, tokenOHLCV, observation } = analysis.results[i];
+        let embeddings = analysis.results[i].embeddings;
+
+        const current = currentMarketData.find((t) => t.id === token.token_id);
 
         if (!current) continue;
 
-        const initialPrice = result.token.price;
+        const initialPrice = token.price;
         const currentPrice = current.price;
 
         const priceChange = currentPrice - initialPrice;
         const percentageChange = (priceChange / initialPrice) * 100;
 
         performances.push({
-          token: result.token.name,
+          token: token.name,
           initialPrice,
           currentPrice,
           priceChange,
           percentageChange,
         });
+
+        if (!embeddings) {
+          const [result] = await this.embeddingService.createEmbeddings(
+            [observation],
+            true,
+          );
+
+          embeddings = result.embedding;
+        }
+
+        weekObservations.push({
+          token_name: token.name,
+          start_date: tokenOHLCV[0].Start,
+          end_date: tokenOHLCV[6].End,
+          observation_text: observation,
+          embedding: embeddings,
+          raw_ohlcv_window: JSON.stringify(tokenOHLCV),
+          next_day_change: percentageChange,
+          next_day_close: currentPrice,
+          outcome: priceChange > 0 ? 'bullish' : 'bearish',
+          created_at: new Date().toISOString(),
+        });
       }
 
       const stringifiedPerformance = JSON.stringify(performances);
+
+      this.log('Saving new week observations..');
+
+      await this.insertManyWeekObservations(weekObservations);
 
       this.log('Saving performances..');
 

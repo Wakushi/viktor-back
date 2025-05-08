@@ -16,6 +16,7 @@ export type TokenWeekAnalysisResult = {
   similarConditions: SimilarWeekObservation[];
   tokenOHLCV: DailyOHLCV[];
   observation: string;
+  embeddings?: number[];
 };
 
 export type WeekAnalysis = {
@@ -39,7 +40,7 @@ export type FormattedResult = {
 
 export type DayAnalysisRecord = {
   id: string;
-  analysis: string;
+  analysis: string; // -> WeekAnalysis
   created_at: Date | string;
   performance?: string;
   fear_and_greed_index?: string;

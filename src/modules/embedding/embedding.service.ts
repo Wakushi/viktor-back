@@ -103,7 +103,10 @@ export class EmbeddingService {
     query: any;
     matchThreshold: number;
     matchCount: number;
-  }): Promise<SimilarWeekObservation[]> {
+  }): Promise<{
+    embeddings: number[];
+    matchingWeekObservations: SimilarWeekObservation[];
+  }> {
     try {
       this.verifyQuery(query);
 
@@ -113,13 +116,15 @@ export class EmbeddingService {
         throw new ValidationError('No embeddings generated for query');
       }
 
+      const observationEmbeddings = embeddings[0].embedding;
+
       const matchingWeekObservations = await this.matchWeekObservations({
-        queryEmbedding: embeddings[0].embedding,
+        queryEmbedding: observationEmbeddings,
         matchThreshold,
         matchCount,
       });
 
-      return matchingWeekObservations;
+      return { embeddings: observationEmbeddings, matchingWeekObservations };
     } catch (error) {
       console.error('Error in findClosestWeekObservation:', error);
 
