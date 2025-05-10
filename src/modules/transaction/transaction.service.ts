@@ -626,7 +626,8 @@ export class TransactionService {
     const sellableTokens = portfolio.filter((token) => {
       return (
         token.token_balance > 0 &&
-        !token.asset.contracts.some((contract) =>
+        token.price > 0 &&
+        !token.asset?.contracts.some((contract) =>
           NOT_SELLABLE_TOKENS.includes(getAddress(contract)),
         )
       );

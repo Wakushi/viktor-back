@@ -6,6 +6,7 @@ import {
   UNISWAP_V3_FACTORY_ABI,
   UNISWAP_QUOTER_V2_ABI,
   UNISWAP_V3_POOL_ABI,
+  MIN_POOL_LIQUIDITY_USD,
 } from './entities/constants';
 import { RpcUrlConfig } from './entities/rpc-url-config.type';
 import {
@@ -163,8 +164,6 @@ export class UniswapV3Service {
       throw new Error('No single-hop pools');
     }
 
-    const MIN_LIQUIDITY_USD = 5000;
-
     const liquidityInPrice =
       Number(formatUnits(liquidityIn, tokenInDecimals)) * tokenInPrice;
 
@@ -172,8 +171,8 @@ export class UniswapV3Service {
       Number(formatUnits(liquidityOut, tokenOutDecimals)) * tokenOutPrice;
 
     if (
-      liquidityOutPrice < MIN_LIQUIDITY_USD ||
-      liquidityInPrice < MIN_LIQUIDITY_USD
+      liquidityOutPrice < MIN_POOL_LIQUIDITY_USD ||
+      liquidityInPrice < MIN_POOL_LIQUIDITY_USD
     ) {
       throw new Error('Pools too shallow for single hop');
     }
@@ -221,8 +220,6 @@ export class UniswapV3Service {
 
     if (!quoterAddress) throw new Error(`No Quoter contract for ${chain}`);
 
-    const MIN_LIQUIDITY_USD = 5000;
-
     const isSwapToUSDC = getAddress(tokenOut) === getAddress(USDC);
     const middle = WETH;
     const legA = isSwapToUSDC ? tokenIn : USDC;
@@ -268,8 +265,8 @@ export class UniswapV3Service {
       Number(formatUnits(liquidityBOut, tokenOutDecimals)) * tokenOutPrice;
 
     if (
-      liquidityAprice < MIN_LIQUIDITY_USD ||
-      liquidityBPrice < MIN_LIQUIDITY_USD
+      liquidityAprice < MIN_POOL_LIQUIDITY_USD ||
+      liquidityBPrice < MIN_POOL_LIQUIDITY_USD
     ) {
       throw new Error('Pools too shallow');
     }
