@@ -158,6 +158,14 @@ export class CronService {
       }
 
       const buyingPrice = token.price;
+
+      if (buyingPrice === 0) {
+        this.log(
+          `Cannot compute price change: buying price is zero for ${token.name}`,
+        );
+        continue;
+      }
+
       const currentPrice = await this.tokenService.getTokenPrice(
         MobulaChain.BASE,
         tokenAddress,

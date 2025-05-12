@@ -246,7 +246,7 @@ export class UniswapV3Service {
     });
 
     if (!poolA || poolA === zeroAddress || !poolB || poolB === zeroAddress) {
-      throw new Error('No multi-hop pools');
+      throw new Error(`No multi-hop pools for ${legA} -> ${middle} -> ${legB}`);
     }
 
     const wethMarketData =
@@ -268,7 +268,7 @@ export class UniswapV3Service {
       liquidityAprice < MIN_POOL_LIQUIDITY_USD ||
       liquidityBPrice < MIN_POOL_LIQUIDITY_USD
     ) {
-      throw new Error('Pools too shallow');
+      throw new Error('Mutli-hop pools too shallow');
     }
 
     const tokens = isSwapToUSDC
