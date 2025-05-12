@@ -178,7 +178,10 @@ export class CronService {
         MIN_PRICE_CHANGE_FOR_PROFIT,
       );
 
-      if (priceChange < -5 || priceChange > expectedPriceChange) {
+      if (
+        priceChange !== Infinity &&
+        (priceChange < -5 || priceChange > expectedPriceChange)
+      ) {
         this.log(
           `Selling ${token.name} -> ${priceChange.toFixed(2)}% (expected: ${expectedPriceChange.toFixed(2)}%)`,
         );
