@@ -8,6 +8,7 @@ export enum Collection {
   POSITIONS = 'positions',
   SETTINGS = 'viktor_settings',
   SWAPS = 'swaps',
+  WALLET_SNAPSHOT = 'wallet_snapshot',
 }
 
 export enum QueryFunctions {

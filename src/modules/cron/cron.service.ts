@@ -11,11 +11,11 @@ import { formatWeekAnalysisResults } from 'src/shared/utils/helpers';
 import { Collection } from '../supabase/entities/collections.type';
 import { LogGateway } from 'src/shared/services/log-gateway';
 import { TransactionService } from '../transaction/transaction.service';
-import { MobulaService } from '../mobula/mobula.service';
 import { MobulaChain } from '../mobula/entities/mobula.entities';
 import { getAddress } from 'viem';
 import { TokensService } from '../tokens/tokens.service';
 import { VIKTOR_ASW_CONTRACT_ADDRESSES } from '../transaction/contracts/constants';
+import { WalletService } from '../wallet/wallet.service';
 
 @Injectable()
 export class CronService {
@@ -28,6 +28,7 @@ export class CronService {
     private readonly logGateway: LogGateway,
     private readonly transactionService: TransactionService,
     private readonly tokenService: TokensService,
+    private readonly walletService: WalletService,
   ) {}
 
   @Cron(CronExpression.EVERY_DAY_AT_9AM)
@@ -49,6 +50,10 @@ export class CronService {
 
       if (mode === 'live' && !skipPastAnalysis) {
         this.log('Evaluating past week-based analysis...');
+        await this.walletService.saveWalletSnapshot(
+          MobulaChain.BASE,
+          'before_sell',
+        );
 
         const pastAnalysisRecord =
           await this.analysisService.evaluatePastAnalysis();
@@ -58,6 +63,11 @@ export class CronService {
             pastAnalysisRecord.results,
           );
         }
+
+        await this.walletService.saveWalletSnapshot(
+          MobulaChain.BASE,
+          'after_sell',
+        );
 
         this.log(
           'Evaluated past analysis performances. Starting week-based analysis task...',
