@@ -129,6 +129,7 @@ export class CronService {
   private async watchPrices() {
     const chain = MobulaChain.BASE;
     const MIN_PRICE_CHANGE_FOR_PROFIT = 5;
+    const MAX_PRICE_CHANGE_FOR_PROFIT = 10;
 
     const lastAnalysis = await this.analysisService.getLastAnalysisRecord();
 
@@ -189,9 +190,9 @@ export class CronService {
 
       const priceChange = ((currentPrice - buyingPrice) / buyingPrice) * 100;
 
-      const expectedPriceChange = Math.max(
-        expectedNextDayChange,
-        MIN_PRICE_CHANGE_FOR_PROFIT,
+      const expectedPriceChange = Math.min(
+        MAX_PRICE_CHANGE_FOR_PROFIT,
+        Math.max(expectedNextDayChange, MIN_PRICE_CHANGE_FOR_PROFIT),
       );
 
       this.log(
