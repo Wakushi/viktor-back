@@ -189,11 +189,13 @@ export class CronService {
 
       const priceChange = ((currentPrice - buyingPrice) / buyingPrice) * 100;
 
-      this.log(`${token.name} price changed by ${priceChange.toFixed(2)}%`);
-
       const expectedPriceChange = Math.max(
         expectedNextDayChange,
         MIN_PRICE_CHANGE_FOR_PROFIT,
+      );
+
+      this.log(
+        `${token.name} price changed by ${priceChange.toFixed(2)}% (expecting: ${expectedPriceChange.toFixed(2)}%)`,
       );
 
       if (

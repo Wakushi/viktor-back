@@ -45,30 +45,32 @@ export class WalletService {
 
     const rawBalances = await Promise.all(
       tokens.map(async (token) => {
-        const contract = token.contracts.find((c) => c.blockchain === chain);
-        const tokenAddress = getAddress(contract.address);
+        try {
+          const contract = token.contracts.find((c) => c.blockchain === chain);
+          const tokenAddress = getAddress(contract.address);
 
-        const balance = await this.tokenService.getTokenBalance({
-          chain,
-          token: tokenAddress,
-          account: VIKTOR_ASW_CONTRACT_ADDRESSES[chain],
-        });
+          const balance = await this.tokenService.getTokenBalance({
+            chain,
+            token: tokenAddress,
+            account: VIKTOR_ASW_CONTRACT_ADDRESSES[chain],
+          });
 
-        const price =
-          token.name === 'USDC'
-            ? 1
-            : await this.tokenService.getTokenPrice(chain, tokenAddress);
+          const price =
+            token.name === 'USDC'
+              ? 1
+              : await this.tokenService.getTokenPrice(chain, tokenAddress);
 
-        const formattedBalance = Number(
-          formatUnits(balance, contract.decimals),
-        );
+          const formattedBalance = Number(
+            formatUnits(balance, contract.decimals),
+          );
 
-        return {
-          token,
-          balance: formattedBalance,
-          price,
-          value: price * formattedBalance,
-        };
+          return {
+            token,
+            balance: formattedBalance,
+            price,
+            value: price * formattedBalance,
+          };
+        } catch {}
       }),
     );
 
