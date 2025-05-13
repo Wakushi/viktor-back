@@ -28,6 +28,7 @@ export class CronService {
     private readonly logGateway: LogGateway,
     private readonly transactionService: TransactionService,
     private readonly tokenService: TokensService,
+    private readonly mobulaService: MobulaService,
   ) {}
 
   @Cron(CronExpression.EVERY_DAY_AT_9AM)
@@ -159,19 +160,36 @@ export class CronService {
 
       const buyingPrice = token.price;
 
-      if (buyingPrice === 0) {
+      if (buyingPrice <= 0 || buyingPrice >= 100000000) {
         this.log(
-          `Cannot compute price change: buying price is zero for ${token.name}`,
+          `Something went wrong with buy price calculation (found ${buyingPrice} for ${token.name})`,
         );
         continue;
       }
 
-      const currentPrice = await this.tokenService.getTokenPrice(
+      let currentPrice = await this.tokenService.getTokenPrice(
         MobulaChain.BASE,
         tokenAddress,
       );
 
+      if (!currentPrice || currentPrice < 0 || currentPrice > 100000000) {
+        const marketData = await this.mobulaService.getTokenMarketDataById(
+          token.token_id,
+        );
+
+        if (!marketData || !marketData.price) {
+          this.log(
+            `Something went wrong with current price calculation (found ${currentPrice} for ${token.name})`,
+          );
+          continue;
+        }
+
+        currentPrice = marketData.price;
+      }
+
       const priceChange = ((currentPrice - buyingPrice) / buyingPrice) * 100;
+
+      this.log(`${token.name} price changed by ${priceChange.toFixed(2)}%`);
 
       const expectedPriceChange = Math.max(
         expectedNextDayChange,
