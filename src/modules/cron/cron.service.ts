@@ -130,6 +130,7 @@ export class CronService {
     const chain = MobulaChain.BASE;
     const MIN_PRICE_CHANGE_FOR_PROFIT = 5;
     const MAX_PRICE_CHANGE_FOR_PROFIT = 10;
+    const STOP_LOSS = -10
 
     const lastAnalysis = await this.analysisService.getLastAnalysisRecord();
 
@@ -201,7 +202,7 @@ export class CronService {
 
       if (
         priceChange !== Infinity &&
-        (priceChange < -5 || priceChange > expectedPriceChange)
+        (priceChange < STOP_LOSS || priceChange > expectedPriceChange)
       ) {
         this.log(
           `Selling ${token.name} -> ${priceChange.toFixed(2)}% (expected: ${expectedPriceChange.toFixed(2)}%)`,
