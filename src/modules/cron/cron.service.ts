@@ -16,6 +16,7 @@ import { getAddress } from 'viem';
 import { TokensService } from '../tokens/tokens.service';
 import { VIKTOR_ASW_CONTRACT_ADDRESSES } from '../transaction/contracts/constants';
 import { WalletService } from '../wallet/wallet.service';
+import { MobulaService } from '../mobula/mobula.service';
 
 @Injectable()
 export class CronService {
@@ -29,6 +30,7 @@ export class CronService {
     private readonly transactionService: TransactionService,
     private readonly tokenService: TokensService,
     private readonly walletService: WalletService,
+    private readonly mobulaService: MobulaService,
   ) {}
 
   @Cron(CronExpression.EVERY_DAY_AT_9AM)
@@ -138,6 +140,8 @@ export class CronService {
   private async watchPrices() {
     const chain = MobulaChain.BASE;
     const MIN_PRICE_CHANGE_FOR_PROFIT = 5;
+    const MAX_PRICE_CHANGE_FOR_PROFIT = 10;
+    const STOP_LOSS = -10;
 
     const lastAnalysis = await this.analysisService.getLastAnalysisRecord();
 
@@ -168,19 +172,49 @@ export class CronService {
       }
 
       const buyingPrice = token.price;
-      const currentPrice = await this.tokenService.getTokenPrice(
+
+      if (buyingPrice <= 0 || buyingPrice >= 100000000) {
+        this.log(
+          `Something went wrong with buy price calculation (found ${buyingPrice} for ${token.name})`,
+        );
+        continue;
+      }
+
+      let currentPrice = await this.tokenService.getTokenPrice(
         MobulaChain.BASE,
         tokenAddress,
       );
 
+      if (!currentPrice || currentPrice < 0 || currentPrice > 100000000) {
+        const marketData = await this.mobulaService.getTokenMarketDataById(
+          token.token_id,
+        );
+
+        if (!marketData || !marketData.price) {
+          this.log(
+            `Something went wrong with current price calculation (found ${currentPrice} for ${token.name})`,
+          );
+          continue;
+        }
+
+        currentPrice = marketData.price;
+      }
+
       const priceChange = ((currentPrice - buyingPrice) / buyingPrice) * 100;
 
-      const expectedPriceChange = Math.max(
-        expectedNextDayChange,
-        MIN_PRICE_CHANGE_FOR_PROFIT,
+      const expectedPriceChange = Math.min(
+        MAX_PRICE_CHANGE_FOR_PROFIT,
+        Math.max(expectedNextDayChange, MIN_PRICE_CHANGE_FOR_PROFIT),
       );
 
-      if (priceChange < -5 || priceChange > expectedPriceChange) {
+      this.log(
+        `${token.name} price changed by ${priceChange.toFixed(2)}% (expecting: ${expectedPriceChange.toFixed(2)}%)`,
+      );
+
+      if (
+        priceChange !== Infinity &&
+        (priceChange < STOP_LOSS || priceChange > expectedPriceChange)
+      ) {
         this.log(
           `Selling ${token.name} -> ${priceChange.toFixed(2)}% (expected: ${expectedPriceChange.toFixed(2)}%)`,
         );

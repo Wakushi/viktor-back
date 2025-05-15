@@ -344,25 +344,26 @@ export class TokensService {
         tokenOut: wethAddress,
       });
 
-      const wethPriceInToken = await this.uniswapV3Service.getPoolPrice({
-        chain,
-        pool: wethPool,
-        tokenIn: token,
-        tokenOut: wethAddress,
-      });
+      const { price, tokenInPriceInTokenOut } =
+        await this.uniswapV3Service.getPoolPrice({
+          chain,
+          pool: wethPool,
+          tokenIn: token,
+        });
 
       const wethPriceUsdc = await this.uniswapV3Service.getWethPriceUsdc(chain);
 
-      const tokenPrice = wethPriceUsdc / wethPriceInToken;
+      const tokenPrice = tokenInPriceInTokenOut
+        ? wethPriceUsdc * price
+        : wethPriceUsdc / price;
 
       return tokenPrice;
     }
 
-    const price = await this.uniswapV3Service.getPoolPrice({
+    const { price } = await this.uniswapV3Service.getPoolPrice({
       chain,
       pool,
       tokenIn: token,
-      tokenOut: usdcAddress,
     });
 
     return price;

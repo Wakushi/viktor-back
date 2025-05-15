@@ -246,7 +246,7 @@ export class UniswapV3Service {
     });
 
     if (!poolA || poolA === zeroAddress || !poolB || poolB === zeroAddress) {
-      throw new Error('No multi-hop pools');
+      throw new Error(`No multi-hop pools for ${legA} -> ${middle} -> ${legB}`);
     }
 
     const wethMarketData =
@@ -268,7 +268,7 @@ export class UniswapV3Service {
       liquidityAprice < MIN_POOL_LIQUIDITY_USD ||
       liquidityBPrice < MIN_POOL_LIQUIDITY_USD
     ) {
-      throw new Error('Pools too shallow');
+      throw new Error('Mutli-hop pools too shallow');
     }
 
     const tokens = isSwapToUSDC
@@ -366,27 +366,39 @@ export class UniswapV3Service {
   public async getPoolPrice({
     chain,
     tokenIn,
-    tokenOut,
     pool,
   }: {
     chain: MobulaChain;
     tokenIn: Address;
-    tokenOut: Address;
     pool: Address;
-  }): Promise<number> {
+  }): Promise<{ price: number; tokenInPriceInTokenOut: boolean }> {
     const client = this.getRpcClient(chain);
 
-    const tokenInDecimals = (await client.readContract({
-      address: tokenIn,
-      abi: ERC20_SIMPLE_ABI,
-      functionName: 'decimals',
-    })) as number;
+    const [token0, token1] = (await Promise.all([
+      client.readContract({
+        address: pool,
+        abi: UNISWAP_V3_POOL_ABI,
+        functionName: 'token0',
+      }),
+      client.readContract({
+        address: pool,
+        abi: UNISWAP_V3_POOL_ABI,
+        functionName: 'token1',
+      }),
+    ])) as [Address, Address];
 
-    const tokenOutDecimals = (await client.readContract({
-      address: tokenOut,
-      abi: ERC20_SIMPLE_ABI,
-      functionName: 'decimals',
-    })) as number;
+    const [dec0, dec1] = (await Promise.all([
+      client.readContract({
+        address: token0,
+        abi: ERC20_SIMPLE_ABI,
+        functionName: 'decimals',
+      }),
+      client.readContract({
+        address: token1,
+        abi: ERC20_SIMPLE_ABI,
+        functionName: 'decimals',
+      }),
+    ])) as [number, number];
 
     const [sqrtPriceX96] = (await client.readContract({
       address: pool,
@@ -396,17 +408,16 @@ export class UniswapV3Service {
 
     const Q96 = 2n ** 96n;
 
-    const numerator = sqrtPriceX96 * sqrtPriceX96;
+    const rawPrice = Number(sqrtPriceX96 * sqrtPriceX96) / Number(Q96 * Q96);
 
-    const rawPrice = Number(numerator) / Number(Q96 * Q96);
+    const decimalAdjustedPrice = rawPrice * Math.pow(10, dec0 - dec1);
 
-    const decimalAdjustment =
-      Number(10n ** BigInt(tokenOutDecimals)) /
-      Number(10n ** BigInt(tokenInDecimals));
+    const isInputToken0 = getAddress(tokenIn) === getAddress(token0);
 
-    const priceToken0InToken1 = rawPrice / decimalAdjustment;
-
-    return Number(priceToken0InToken1.toFixed(6));
+    return {
+      price: decimalAdjustedPrice,
+      tokenInPriceInTokenOut: isInputToken0,
+    };
   }
 
   public async getWethPriceUsdc(chain: MobulaChain): Promise<number> {
@@ -423,14 +434,13 @@ export class UniswapV3Service {
       throw new Error(`No viable WETH/USDC pool found on ${chain}`);
     }
 
-    const wethPriceInUsdc = await this.getPoolPrice({
+    const { price } = await this.getPoolPrice({
       chain,
       tokenIn: WETH,
-      tokenOut: USDC,
       pool,
     });
 
-    return wethPriceInUsdc;
+    return price;
   }
 
   private getRpcUrl(chainName: MobulaChain): string {

@@ -56,7 +56,7 @@ export class AnalysisService {
     private readonly logGateway: LogGateway,
   ) {}
 
-  public async seekMarketBuyingTargets(limit: number = 5): Promise<any> {
+  public async seekMarketBuyingTargets(limit: number = 10): Promise<any> {
     try {
       this.log('Started token search...');
 
