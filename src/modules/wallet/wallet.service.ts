@@ -10,7 +10,13 @@ import { TokensService } from '../tokens/tokens.service';
 import { formatUnits, getAddress } from 'viem';
 import { VIKTOR_ASW_CONTRACT_ADDRESSES } from '../transaction/contracts/constants';
 import { USDC } from '../tokens/entities/usdc';
-import { Balance } from './entities/wallet.entities';
+import {
+  Balance,
+  WalletSnapshot,
+  WalletSnapshotState,
+} from './entities/wallet.entities';
+import { SupabaseError, SupabaseService } from '../supabase/supabase.service';
+import { Collection } from '../supabase/entities/collections.type';
 
 @Injectable()
 export class WalletService {
@@ -21,6 +27,7 @@ export class WalletService {
     },
     private readonly analysisService: AnalysisService,
     private readonly tokenService: TokensService,
+    private readonly supabaseService: SupabaseService,
   ) {
     const { rpcUrls } = config;
 
@@ -87,5 +94,44 @@ export class WalletService {
     }));
 
     return balances;
+  }
+
+  public async saveWalletSnapshot(
+    chain: MobulaChain,
+    state: WalletSnapshotState,
+  ): Promise<void> {
+    const portfolio = await this.getWalletPortfolio(chain);
+
+    const snapshot: Omit<WalletSnapshot, 'id'> = {
+      state,
+      balances: JSON.stringify(portfolio),
+      created_at: new Date(),
+    };
+
+    const { error } = await this.supabaseService.client
+      .from(Collection.WALLET_SNAPSHOT)
+      .insert(snapshot);
+
+    if (error) {
+      throw new SupabaseError('Failed to save wallet snapshot', error);
+    }
+  }
+
+  public async getWalletSnapshots(): Promise<WalletSnapshot[]> {
+    try {
+      const { data, error } = await this.supabaseService.client
+        .from(Collection.WALLET_SNAPSHOT)
+        .select('*')
+        .order('created_at', { ascending: false });
+
+      if (error) {
+        throw new SupabaseError('Failed to fetch wallet snapshots', error);
+      }
+
+      return data;
+    } catch (error) {
+      console.error('Error fetching wallet snapshots:', error);
+      return null;
+    }
   }
 }
