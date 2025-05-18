@@ -10,9 +10,16 @@ export type Balance = {
   token: MobulaExtendedToken;
 };
 
+export type WalletSnapshotInsert = {
+  id: number;
+  state: WalletSnapshotState;
+  balances: string;
+  created_at: Date | string;
+};
+
 export type WalletSnapshot = {
   id: number;
   state: WalletSnapshotState;
-  balances: string; // JSON.parse(balances) => Balance[]
+  balances: Balance[];
   created_at: Date | string;
 };

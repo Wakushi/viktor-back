@@ -13,6 +13,7 @@ import { USDC } from '../tokens/entities/usdc';
 import {
   Balance,
   WalletSnapshot,
+  WalletSnapshotInsert,
   WalletSnapshotState,
 } from './entities/wallet.entities';
 import { SupabaseError, SupabaseService } from '../supabase/supabase.service';
@@ -102,7 +103,7 @@ export class WalletService {
   ): Promise<void> {
     const portfolio = await this.getWalletPortfolio(chain);
 
-    const snapshot: Omit<WalletSnapshot, 'id'> = {
+    const snapshot: Omit<WalletSnapshotInsert, 'id'> = {
       state,
       balances: JSON.stringify(portfolio),
       created_at: new Date(),
@@ -122,13 +123,13 @@ export class WalletService {
       const { data, error } = await this.supabaseService.client
         .from(Collection.WALLET_SNAPSHOT)
         .select('*')
-        .order('created_at', { ascending: false });
+        .order('created_at', { ascending: true });
 
       if (error) {
         throw new SupabaseError('Failed to fetch wallet snapshots', error);
       }
 
-      return data;
+      return data.map((d) => ({ ...d, balances: JSON.parse(d.balances) }));
     } catch (error) {
       console.error('Error fetching wallet snapshots:', error);
       return null;

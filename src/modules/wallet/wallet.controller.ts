@@ -15,4 +15,12 @@ export class WalletController {
 
     return portfolio;
   }
+
+  @Get('snapshots')
+  @HttpCode(200)
+  async getWalletSnapshots() {
+    const snapshots = await this.walletService.getWalletSnapshots();
+
+    return snapshots;
+  }
 }
