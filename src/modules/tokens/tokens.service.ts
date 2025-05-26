@@ -110,7 +110,7 @@ export class TokensService {
   private filterDiscoveredTokens(
     tokens: MobulaMultipleTokens[],
   ): MobulaMultipleTokens[] {
-    const MIN_MARKET_CAP = 1000000;
+    const MIN_MARKET_CAP = 10000000;
     const MIN_LIQUIDITY = 300000;
 
     return tokens.filter((token) => {
@@ -360,13 +360,16 @@ export class TokensService {
       return tokenPrice;
     }
 
-    const { price } = await this.uniswapV3Service.getPoolPrice({
-      chain,
-      pool,
-      tokenIn: token,
-    });
+    const { price, tokenInPriceInTokenOut } =
+      await this.uniswapV3Service.getPoolPrice({
+        chain,
+        pool,
+        tokenIn: token,
+      });
 
-    return price;
+    const tokenPrice = tokenInPriceInTokenOut ? 1 * price : 1 / price;
+
+    return tokenPrice;
   }
 
   private log(message: string) {

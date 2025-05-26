@@ -11,8 +11,11 @@ import { formatWeekAnalysisResults } from 'src/shared/utils/helpers';
 import { Collection } from '../supabase/entities/collections.type';
 import { LogGateway } from 'src/shared/services/log-gateway';
 import { TransactionService } from '../transaction/transaction.service';
-import { MobulaChain } from '../mobula/entities/mobula.entities';
-import { getAddress } from 'viem';
+import {
+  MobulaChain,
+  MobulaExtendedToken,
+} from '../mobula/entities/mobula.entities';
+import { Address, getAddress } from 'viem';
 import { TokensService } from '../tokens/tokens.service';
 import { VIKTOR_ASW_CONTRACT_ADDRESSES } from '../transaction/contracts/constants';
 import { WalletService } from '../wallet/wallet.service';
@@ -139,8 +142,6 @@ export class CronService {
   @Cron(CronExpression.EVERY_5_MINUTES)
   private async watchPrices() {
     const chain = MobulaChain.BASE;
-    const MIN_PRICE_CHANGE_FOR_PROFIT = 5;
-    const MAX_PRICE_CHANGE_FOR_PROFIT = 10;
     const STOP_LOSS = -10;
 
     const lastAnalysis = await this.analysisService.getLastAnalysisRecord();
@@ -153,79 +154,105 @@ export class CronService {
     for (const result of analysisResults) {
       const { token, expectedNextDayChange } = result;
 
-      const contract = token.contracts.find((c) => c.blockchain === chain);
-      const tokenAddress = getAddress(contract.address);
+      try {
+        const { priceChange, expectedPriceChange, tokenAddress } =
+          await this.getPriceChange({
+            chain,
+            token,
+            expectedNextDayChange,
+          });
 
-      if (!tokenAddress) {
-        this.log(`Unable to find recent market data for token ${token.name}`);
-        continue;
-      }
-
-      const balance = await this.tokenService.getTokenBalance({
-        chain,
-        token: tokenAddress,
-        account: VIKTOR_ASW_CONTRACT_ADDRESSES[chain],
-      });
-
-      if (!balance || balance === BigInt(0)) {
-        continue;
-      }
-
-      const buyingPrice = token.price;
-
-      if (buyingPrice <= 0 || buyingPrice >= 100000000) {
-        this.log(
-          `Something went wrong with buy price calculation (found ${buyingPrice} for ${token.name})`,
-        );
-        continue;
-      }
-
-      let currentPrice = await this.tokenService.getTokenPrice(
-        MobulaChain.BASE,
-        tokenAddress,
-      );
-
-      if (!currentPrice || currentPrice < 0 || currentPrice > 100000000) {
-        const marketData = await this.mobulaService.getTokenMarketDataById(
-          token.token_id,
-        );
-
-        if (!marketData || !marketData.price) {
+        if (priceChange < STOP_LOSS || priceChange > expectedPriceChange) {
           this.log(
-            `Something went wrong with current price calculation (found ${currentPrice} for ${token.name})`,
+            `Selling ${token.name} -> ${priceChange.toFixed(2)}% (expected: ${expectedPriceChange.toFixed(2)}%)`,
           );
-          continue;
+
+          await this.transactionService.sellToken({
+            chain,
+            tokenAddress,
+            token: token,
+          });
         }
-
-        currentPrice = marketData.price;
-      }
-
-      const priceChange = ((currentPrice - buyingPrice) / buyingPrice) * 100;
-
-      const expectedPriceChange = Math.min(
-        MAX_PRICE_CHANGE_FOR_PROFIT,
-        Math.max(expectedNextDayChange, MIN_PRICE_CHANGE_FOR_PROFIT),
-      );
-
-      this.log(
-        `${token.name} price changed by ${priceChange.toFixed(2)}% (expecting: ${expectedPriceChange.toFixed(2)}%)`,
-      );
-
-      if (
-        priceChange !== Infinity &&
-        (priceChange < STOP_LOSS || priceChange > expectedPriceChange)
-      ) {
-        this.log(
-          `Selling ${token.name} -> ${priceChange.toFixed(2)}% (expected: ${expectedPriceChange.toFixed(2)}%)`,
-        );
-
-        await this.transactionService.sellToken({
-          chain,
-          tokenAddress,
-          token: token,
-        });
+      } catch (error) {
+        this.log(error);
       }
     }
+  }
+
+  private async getPriceChange({
+    chain,
+    token,
+    expectedNextDayChange,
+  }: {
+    chain: MobulaChain;
+    token: MobulaExtendedToken;
+    expectedNextDayChange: number;
+  }): Promise<{
+    priceChange: number;
+    expectedPriceChange: number;
+    tokenAddress: Address;
+  }> {
+    const MIN_PRICE_CHANGE_FOR_PROFIT = 5;
+    const MAX_PRICE_CHANGE_FOR_PROFIT = 10;
+
+    const contract = token.contracts.find((c) => c.blockchain === chain);
+    const tokenAddress = getAddress(contract.address);
+
+    if (!tokenAddress) {
+      throw new Error(
+        `Unable to find recent market data for token ${token.name}`,
+      );
+    }
+
+    const balance = await this.tokenService.getTokenBalance({
+      chain,
+      token: tokenAddress,
+      account: VIKTOR_ASW_CONTRACT_ADDRESSES[chain],
+    });
+
+    if (!balance || balance === BigInt(0)) {
+      throw new Error(`No token balance for ${token.name}`);
+    }
+
+    const buyingPrice = token.price;
+
+    if (buyingPrice <= 0 || buyingPrice >= 100000000) {
+      throw new Error(
+        `Something went wrong with buy price calculation (found ${buyingPrice} for ${token.name})`,
+      );
+    }
+
+    let currentPrice = await this.tokenService.getTokenPrice(
+      MobulaChain.BASE,
+      tokenAddress,
+    );
+
+    if (!currentPrice || currentPrice < 0 || currentPrice > 100000000) {
+      const marketData = await this.mobulaService.getTokenMarketDataById(
+        token.token_id,
+      );
+
+      if (!marketData || !marketData.price) {
+        throw new Error(
+          `Something went wrong with current price calculation (found ${currentPrice} for ${token.name})`,
+        );
+      }
+
+      currentPrice = marketData.price;
+    }
+
+    const priceChange = ((currentPrice - buyingPrice) / buyingPrice) * 100;
+
+    const expectedPriceChange = Math.min(
+      MAX_PRICE_CHANGE_FOR_PROFIT,
+      Math.max(expectedNextDayChange, MIN_PRICE_CHANGE_FOR_PROFIT),
+    );
+
+    this.log(
+      `${token.name} price changed by ${priceChange.toFixed(2)}% (expecting: ${expectedPriceChange.toFixed(2)}%)`,
+    );
+
+    return { priceChange, expectedPriceChange, tokenAddress };
   }
 
   private log(message: string) {
@@ -233,7 +260,5 @@ export class CronService {
     this.logGateway.sendLog(message);
   }
 
-  public async test() {
-    await this.watchPrices();
-  }
+  public async test() {}
 }
