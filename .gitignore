@@ -57,5 +57,5 @@ report.[0-9]*.[0-9]*.[0-9]*.[0-9]*.json
 
 # Local files
 /downloads
-/history
+/debug
 /ohlcv

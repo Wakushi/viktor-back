@@ -1,5 +1,5 @@
 import { Inject, Injectable } from '@nestjs/common';
-import { RpcUrlConfig } from '../uniswap-v3/entities/rpc-url-config.type';
+import { RpcUrlConfig } from '../../shared/entities/rpc-url-config.type';
 import { AnalysisService } from '../analysis/analysis.service';
 import { TokenWeekAnalysisResult } from '../analysis/entities/analysis.type';
 import {
@@ -66,7 +66,7 @@ export class WalletService {
           const price =
             token.name === 'USDC'
               ? 1
-              : await this.tokenService.getTokenPrice(chain, tokenAddress);
+              : await this.tokenService.getTokenPriceUniswap(chain, tokenAddress);
 
           const formattedBalance = Number(
             formatUnits(balance, contract.decimals),

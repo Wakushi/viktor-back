@@ -12,10 +12,11 @@ import {
   getAddress,
   Chain,
   formatUnits,
+  ContractFunctionExecutionError,
 } from 'viem';
 import { privateKeyToAccount } from 'viem/accounts';
 import { base, arbitrum, mainnet } from 'viem/chains';
-import { RpcUrlConfig } from '../uniswap-v3/entities/rpc-url-config.type';
+import { RpcUrlConfig } from '../../shared/entities/rpc-url-config.type';
 import {
   MobulaChain,
   MobulaExtendedToken,
@@ -27,6 +28,7 @@ import {
   ERC20_SIMPLE_ABI,
   VIKTOR_ASW_ABI,
   VIKTOR_ASW_CONTRACT_ADDRESSES,
+  VIKTOR_ASW_V3_ABI,
 } from './contracts/constants';
 import {
   BLOCK_EXPLORER_TX_URL,
@@ -41,6 +43,7 @@ import { MobulaService } from '../mobula/mobula.service';
 import { UniswapV3Service } from '../uniswap-v3/uniswap-v3.service';
 import { applySlippage } from 'src/shared/utils/helpers';
 import { MIN_USD_AMOUNT_TO_ALLOCATE } from './constants';
+import { AerodromeRoute } from '../aerodrome/entities/pool.types';
 
 @Injectable()
 export class TransactionService {
@@ -156,7 +159,7 @@ export class TransactionService {
 
           const { token, usdAmountAllocated } = quotedToken;
 
-          const swap = await this.executeSwap({
+          const swap = await this.executeSwapUni({
             chainName: chain,
             path: quotedToken.path,
             tokenIn: getAddress(USDC_ADDRESSES[chain]),
@@ -304,7 +307,7 @@ export class TransactionService {
           return;
         }
 
-        const swap = await this.executeSwap({
+        const swap = await this.executeSwapUni({
           chainName: chain,
           path,
           tokenIn: getAddress(tokenAddress),
@@ -341,7 +344,7 @@ export class TransactionService {
     this.log(`Selling tokens completed !`);
   }
 
-  private async executeSwap({
+  private async executeSwapUni({
     chainName,
     path,
     tokenIn,
@@ -420,6 +423,92 @@ export class TransactionService {
     }
   }
 
+  public async executeSwapAero({
+    routes,
+    tokenIn,
+    tokenOut,
+    amountIn,
+    minAmountOut,
+  }: {
+    routes: AerodromeRoute[];
+    tokenIn: Address;
+    tokenOut: Address;
+    amountIn: bigint;
+    minAmountOut: bigint;
+  }): Promise<Swap> {
+    try {
+      const chainName = MobulaChain.BASE;
+
+      const account = privateKeyToAccount(this.config.privateKey);
+      const chain = this.getChain(chainName);
+      const rpcUrl = this.getRpcUrl(chainName);
+
+      const viktorAswContractAddress =
+        '0x626E888aE74b3CdA1CD00E5361c8f692FE68D707';
+
+      const walletClient = createWalletClient({
+        account,
+        chain,
+        transport: http(rpcUrl),
+      });
+
+      const publicClient = createPublicClient({
+        chain,
+        transport: http(rpcUrl),
+      });
+
+      const { request } = await publicClient.simulateContract({
+        account,
+        address: viktorAswContractAddress,
+        abi: VIKTOR_ASW_V3_ABI,
+        functionName: 'swapTokensAero',
+        args: [amountIn, minAmountOut, routes],
+      });
+
+      const gasEstimate = await publicClient.estimateContractGas({
+        account,
+        address: viktorAswContractAddress,
+        abi: VIKTOR_ASW_V3_ABI,
+        functionName: 'swapTokensAero',
+        args: [amountIn, minAmountOut, routes],
+      });
+
+      const gasWithBuffer = (gasEstimate * 12n) / 10n;
+
+      const txHash = await walletClient.writeContract({
+        ...request,
+        gas: gasWithBuffer,
+      });
+
+      const receipt = await publicClient.waitForTransactionReceipt({
+        hash: txHash,
+      });
+
+      if (receipt.status !== 'success') {
+        throw new Error(`Transaction reverted: ${txHash}`);
+      }
+
+      const swap: Swap = {
+        chain: chainName,
+        routes,
+        token_in: tokenIn,
+        token_out: tokenOut,
+        amount_in: amountIn.toString(),
+        amount_out: minAmountOut.toString(),
+        transaction_hash: txHash,
+      };
+
+      return swap;
+    } catch (error: any) {
+      if (error instanceof ContractFunctionExecutionError) {
+        const { shortMessage, metaMessages } = error.cause;
+        throw new Error(`${shortMessage} -> ${metaMessages[0]}`);
+      }
+
+      throw new Error('Aerodrome swap errored: ' + error);
+    }
+  }
+
   private async getQuotedTokens({
     results,
     totalUsdToAllocate,
@@ -489,6 +578,7 @@ export class TransactionService {
         this.log(
           `Error quoting ${result.token.name}: ${error?.message || error}`,
         );
+
         return await this.getQuotedTokens({
           results: results.filter(
             ({ token }) => token.token_id !== result.token.token_id,

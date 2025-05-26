@@ -323,11 +323,11 @@ export class TokensService {
     return balance;
   }
 
-  public async getTokenPrice(chain: MobulaChain, token: Address): Promise<any> {
+  public async getTokenPriceUniswap(chain: MobulaChain, token: Address): Promise<any> {
     const usdcAddress = USDC_ADDRESSES[chain];
     const wethAddress = WRAPPED_NATIVE_ADDRESSES[chain];
 
-    const { pool, liquidityOut } = await this.uniswapV3Service.getBestPool({
+    const { address, liquidityOut } = await this.uniswapV3Service.getBestPool({
       chain,
       tokenIn: token,
       tokenOut: usdcAddress,
@@ -338,7 +338,7 @@ export class TokensService {
       Number(formatUnits(liquidityOut, USDC_DECIMALS)) * 1;
 
     if (liquidityUSDCPrice < MIN_LIQUIDITY_USD) {
-      const { pool: wethPool } = await this.uniswapV3Service.getBestPool({
+      const { address: wethPool } = await this.uniswapV3Service.getBestPool({
         chain,
         tokenIn: token,
         tokenOut: wethAddress,
@@ -362,7 +362,7 @@ export class TokensService {
 
     const { price } = await this.uniswapV3Service.getPoolPrice({
       chain,
-      pool,
+      pool: address,
       tokenIn: token,
     });
 

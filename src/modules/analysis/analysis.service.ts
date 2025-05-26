@@ -269,6 +269,8 @@ export class AnalysisService {
     try {
       await this.initCoinCodexList();
 
+      this.log(`Training on token ${tokenName}`);
+
       const metrics = await this.getTokenOHLCV({
         tokenName,
         fromLastTraining: true,
@@ -334,6 +336,8 @@ export class AnalysisService {
 
         weekObservations.push(weekObservation);
       }
+
+      this.log(`Inserting training data (${weekObservations.length} rows)`);
 
       await this.insertManyWeekObservations(weekObservations);
     } catch (error) {

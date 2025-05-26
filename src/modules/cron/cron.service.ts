@@ -180,7 +180,7 @@ export class CronService {
         continue;
       }
 
-      let currentPrice = await this.tokenService.getTokenPrice(
+      let currentPrice = await this.tokenService.getTokenPriceUniswap(
         MobulaChain.BASE,
         tokenAddress,
       );

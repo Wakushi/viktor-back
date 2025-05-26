@@ -16,6 +16,7 @@ import { AnalysisModule } from './modules/analysis/analysis.module';
 import { SettingsModule } from './modules/settings/settings.module';
 import { TransactionModule } from './modules/transaction/transaction.module';
 import { WalletModule } from './modules/wallet/wallet.module';
+import { AerodromeModule } from './modules/aerodrome/aerodrome.module';
 @Module({
   imports: [
     ConfigModule.forRoot({
@@ -41,6 +42,11 @@ import { WalletModule } from './modules/wallet/wallet.module';
         [MobulaChain.BASE]: `https://base-mainnet.g.alchemy.com/v2/${process.env.ALCHEMY_API_KEY}`,
         [MobulaChain.ARBITRUM]: `https://arb-mainnet.g.alchemy.com/v2/${process.env.ALCHEMY_API_KEY}`,
         [MobulaChain.BNB]: `https://bnb-mainnet.g.alchemy.com/v2/${process.env.ALCHEMY_API_KEY}`,
+      },
+    }),
+    AerodromeModule.forRoot({
+      rpcUrls: {
+        [MobulaChain.BASE]: `https://base-mainnet.g.alchemy.com/v2/${process.env.ALCHEMY_API_KEY}`,
       },
     }),
     TokensModule.forRoot(),

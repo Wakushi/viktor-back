@@ -1,6 +1,6 @@
 import { DynamicModule, Module } from '@nestjs/common';
 import { UniswapV3Service } from './uniswap-v3.service';
-import { RpcUrlConfig } from './entities/rpc-url-config.type';
+import { RpcUrlConfig } from '../../shared/entities/rpc-url-config.type';
 
 @Module({})
 export class UniswapV3Module {

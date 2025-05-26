@@ -8,7 +8,7 @@ import {
   UNISWAP_V3_POOL_ABI,
   MIN_POOL_LIQUIDITY_USD,
 } from './entities/constants';
-import { RpcUrlConfig } from './entities/rpc-url-config.type';
+import { RpcUrlConfig } from '../../shared/entities/rpc-url-config.type';
 import {
   Address,
   Chain,
@@ -42,9 +42,7 @@ export class UniswapV3Service {
     private readonly config: { rpcUrls: RpcUrlConfig },
     private readonly mobulaService: MobulaService,
   ) {
-    const { rpcUrls } = config;
-
-    if (!rpcUrls) {
+    if (!config?.rpcUrls) {
       throw new Error('Expected RPC URLs');
     }
   }
@@ -87,13 +85,13 @@ export class UniswapV3Service {
 
   public async findShortestViablePath({
     chain,
+    amountIn,
     tokenIn,
+    tokenInDecimals,
+    tokenInPrice,
     tokenOut,
     tokenOutDecimals,
     tokenOutPrice,
-    tokenInPrice,
-    amountIn,
-    tokenInDecimals,
   }: {
     chain: MobulaChain;
     tokenIn: Address;
@@ -154,13 +152,13 @@ export class UniswapV3Service {
 
     if (!quoterAddress) throw new Error(`No Quoter contract for ${chain}`);
 
-    const { pool, fee, liquidityIn, liquidityOut } = await this.getBestPool({
+    const { address, fee, liquidityIn, liquidityOut } = await this.getBestPool({
       chain,
       tokenIn,
       tokenOut,
     });
 
-    if (!pool || pool === zeroAddress) {
+    if (!address || address === zeroAddress) {
       throw new Error('No single-hop pools');
     }
 
@@ -226,7 +224,7 @@ export class UniswapV3Service {
     const legB = isSwapToUSDC ? USDC : tokenOut;
 
     const {
-      pool: poolA,
+      address: poolA,
       fee: feeA,
       liquidityOut: liquidityAOut,
     } = await this.getBestPool({
@@ -236,7 +234,7 @@ export class UniswapV3Service {
     });
 
     const {
-      pool: poolB,
+      address: poolB,
       fee: feeB,
       liquidityOut: liquidityBOut,
     } = await this.getBestPool({
@@ -309,7 +307,7 @@ export class UniswapV3Service {
     let bestPool: Pool | null = null;
 
     for (const fee of fees) {
-      const pool = await this.getPoolAddress({
+      const address = await this.getPoolAddress({
         chain,
         tokenA: tokenIn,
         tokenB: tokenOut,
@@ -328,7 +326,7 @@ export class UniswapV3Service {
           },
         ],
         functionName: 'balanceOf',
-        args: [pool],
+        args: [address],
       });
 
       const tokenInBalance = await publicClient.readContract({
@@ -343,7 +341,7 @@ export class UniswapV3Service {
           },
         ],
         functionName: 'balanceOf',
-        args: [pool],
+        args: [address],
       });
 
       if (
@@ -352,7 +350,7 @@ export class UniswapV3Service {
           tokenInBalance > bestPool.liquidityIn)
       ) {
         bestPool = {
-          pool,
+          address,
           fee,
           liquidityOut: tokenOutBalance,
           liquidityIn: tokenInBalance,
@@ -424,20 +422,20 @@ export class UniswapV3Service {
     const WETH = WRAPPED_NATIVE_ADDRESSES[chain];
     const USDC = USDC_ADDRESSES[chain];
 
-    const { pool } = await this.getBestPool({
+    const { address } = await this.getBestPool({
       chain,
       tokenIn: WETH,
       tokenOut: USDC,
     });
 
-    if (!pool || pool === zeroAddress) {
+    if (!address || address === zeroAddress) {
       throw new Error(`No viable WETH/USDC pool found on ${chain}`);
     }
 
     const { price } = await this.getPoolPrice({
       chain,
       tokenIn: WETH,
-      pool,
+      pool: address,
     });
 
     return price;

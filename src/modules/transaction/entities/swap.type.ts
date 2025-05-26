@@ -5,6 +5,7 @@ import {
   MobulaExtendedToken,
 } from 'src/modules/mobula/entities/mobula.entities';
 import { Address } from 'viem/accounts';
+import { AerodromeRoute } from 'src/modules/aerodrome/entities/pool.types';
 
 export type Swap = {
   chain: MobulaChain;
@@ -12,7 +13,8 @@ export type Swap = {
   token_out: Address;
   amount_in: string;
   amount_out: string;
-  path: Hex;
+  path?: Hex;
+  routes?: AerodromeRoute[];
   transaction_hash: Hash;
   created_at?: Date | string;
 };
