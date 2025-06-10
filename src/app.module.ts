@@ -16,6 +16,8 @@ import { AnalysisModule } from './modules/analysis/analysis.module';
 import { SettingsModule } from './modules/settings/settings.module';
 import { TransactionModule } from './modules/transaction/transaction.module';
 import { WalletModule } from './modules/wallet/wallet.module';
+import { HyperliquidService } from './modules/hyperliquid/hyperliquid.service';
+import { HyperliquidModule } from './modules/hyperliquid/hyperliquid.module';
 @Module({
   imports: [
     ConfigModule.forRoot({
@@ -68,7 +70,9 @@ import { WalletModule } from './modules/wallet/wallet.module';
       },
     }),
     SettingsModule,
+    HyperliquidModule,
   ],
+  providers: [HyperliquidService],
 })
 export class AppModule {
   configure(consumer: MiddlewareConsumer) {
