@@ -260,7 +260,11 @@ export class MobulaService {
   ): Promise<{ data: any; error: string }> {
     const BASE_URL = 'https://production-api.mobula.io/api/1';
 
-    const response = await fetch(BASE_URL + endpoint);
+    const response = await fetch(BASE_URL + endpoint, {
+      headers: {
+        Authorization: this.config.apiKey,
+      },
+    });
 
     const { data, message } = await response.json();
 
