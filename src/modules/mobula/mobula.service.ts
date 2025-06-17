@@ -40,7 +40,12 @@ export class MobulaService {
       baseUrl += fields.join(',');
     }
 
-    const response = await fetch(baseUrl);
+    const response = await fetch(baseUrl, {
+      headers: {
+        Authorization: this.config.apiKey,
+      },
+    });
+    
     const { data, statusCode, message } = await response.json();
 
     if (statusCode && statusCode >= 400) {
